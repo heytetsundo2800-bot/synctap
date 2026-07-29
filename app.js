@@ -5,7 +5,7 @@
 
 /* ---------- 定数 ---------- */
 const VERSION = 'v1.0';
-const BUILD   = '2026-07-30 16:40';   // 更新したらここも変える（タイトル画面下に出る）
+const BUILD   = '2026-07-30 19:20';   // 更新したらここも変える（タイトル画面下に出る）
 const BROKERS = [
   { label: 'A',  url: 'wss://broker.emqx.io:8084/mqtt' },
   { label: 'B',  url: 'wss://broker.hivemq.com:8884/mqtt' },
@@ -44,6 +44,19 @@ const VS = {
   RAMP: 50,          // このラウンド数で威力が2倍になる（試合が延びすぎないように）
   DEAD: 12,          // この差以下は互角（ダメージなし）
   FAIL_ERR: 420,     // ミスした人の誤差はこの値として扱う
+};
+
+/* 練習モード（AIと1対1）のAIの腕前
+   bias  : 平均してどれだけ遅れて押すか(ms)
+   jitter: 押すタイミングのばらつき(ms・標準偏差)
+   miss  : 押し忘れる確率
+   wrong : 方向を間違える／「さわるな」で触ってしまう確率 */
+const AI_ID = 'ai_practice';
+const AI_LEVELS = {
+  // 平均|誤差| … よわい≈158ms / ふつう≈90ms / つよい≈30ms（dev/aibalance.js で調整）
+  easy: { key: 'easy', name: 'よわい', label: 'LV.1', bias: 40, jitter: 128, miss: 0.15,  wrong: 0.18 },
+  mid:  { key: 'mid',  name: 'ふつう', label: 'LV.2', bias: 18, jitter: 85,  miss: 0.06,  wrong: 0.08 },
+  hard: { key: 'hard', name: 'つよい', label: 'LV.3', bias: 4,  jitter: 32,  miss: 0.012, wrong: 0.02 },
 };
 
 const WIN_BASE    = 200;  // 成功と認める最大ズレ(ms)：テンポが速くなるほど狭くなる
@@ -147,6 +160,9 @@ const S = {
   synced: false,
   game: null,
   lastResult: null,
+  practice: false,       // AIと1対1の練習中か
+  aiLevel: 'mid',
+  prSpeed: 'normal',
   audio: null,
   audioEpoch: 0,
   wakeLock: null,
@@ -366,7 +382,7 @@ function onPresence(m) {
 function broadcastRoster() { pub('ctrl', { type: 'roster', roster: S.roster }); }
 
 function pruneRoster() {
-  if (!S.isHost || inGame()) return;
+  if (!S.isHost || inGame() || !S.code) return;   // 練習中(code なし)は誰も外さない
   const before = S.roster.length;
   S.roster = S.roster.filter(p => {
     if (p.id === S.me.id) return true;
@@ -645,6 +661,88 @@ function hostStart() {
   startGame(seed, startAt, S.roster, S.play, S.speed, vs, judgeWait);
 }
 
+/* =========================================================
+   練習モード：AIと1対1（対戦ルール・通信なし）
+
+   自分の端末だけで完結する。AIの入力は「押した時刻」を直接作って
+   ホスト判定に流し込むので、対戦の計算式は本番とまったく同じ。
+   ========================================================= */
+const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) * 2;  // ざっくり正規分布
+
+function setAiLevel(k) {
+  S.aiLevel = AI_LEVELS[k] ? k : 'mid';
+  $$('#ai-levels .prcard').forEach(el => el.classList.toggle('on', el.dataset.lv === S.aiLevel));
+}
+function setPrSpeed(k) {
+  S.prSpeed = SPEEDS[k] ? k : 'normal';
+  $('#pr-speed-normal').classList.toggle('on', S.prSpeed === 'normal');
+  $('#pr-speed-oni').classList.toggle('on', S.prSpeed === 'oni');
+}
+function openPractice() {
+  setAiLevel(S.aiLevel);
+  setPrSpeed(S.prSpeed);
+  show('practice');
+  const w = $('#sc-practice .wrap');
+  if (w) w.scrollTop = 0;   // 前回の続きの位置から開かないように
+}
+
+function startPractice() {
+  const lv = AI_LEVELS[S.aiLevel] || AI_LEVELS.mid;
+  const name = ($('#in-name').value || '').trim() || 'あなた';
+  S.me.name = name;
+  try { localStorage.setItem('st_name', name); } catch (e) {}
+
+  // 通信は一切使わない：code が null なら pub() は何もしない
+  S.code = null;
+  S.isHost = true;
+  S.practice = true;
+  S.offset = 0; S.synced = true;
+  S.presence.clear();
+  S.play = 'versus';
+  S.speed = S.prSpeed;
+  S.me.idx = 0;
+  S.roster = [
+    { id: S.me.id, name, idx: 0 },
+    { id: AI_ID, name: 'AI・' + lv.name, idx: 1 },
+  ];
+
+  initAudio();
+  const seed = (Math.random() * 0xffffffff) >>> 0;
+  startGame(seed, now() + 1400, S.roster, 'versus', S.prSpeed, { team: [0, 1], rival: [1, 0] }, JUDGE_DELAY);
+  S.game.ai = { lv, done: -1 };
+}
+
+/* そのラウンドでAIが「いつ・何を」押したことにするかを決める */
+function aiTurn(round) {
+  const g = S.game, ai = g && g.ai;
+  if (!ai || ai.done >= round) return;
+  ai.done = round;
+
+  const L = ai.lv;
+  const ins = insOf(g, round);
+  const target = g.startAtHost + g.at[round];
+  const feed = (t, act, dir) => onInput({ id: AI_ID, round, t, act, dir: dir || null });
+  const when = () => target + clamp(L.bias + gauss() * L.jitter, -430, 430);
+
+  if (ins.type === 'NO_TAP') {
+    // 「さわるな」：たまに我慢できずに触ってしまう
+    if (Math.random() < L.wrong) feed(target + gauss() * 150, 'tap', null);
+    return;
+  }
+  if (Math.random() < L.miss) return;                    // 押し忘れ
+
+  if (ins.type === 'SWIPE') {
+    let dir = ins.dir;
+    if (Math.random() < L.wrong) {                       // 方向を間違える
+      const other = DIRS.filter(d => d.key !== ins.dir);
+      dir = other[(Math.random() * other.length) | 0].key;
+    }
+    feed(when(), 'swipe', dir);
+  } else {
+    feed(when(), 'tap', null);
+  }
+}
+
 function startGame(seed, startAtHost, roster, playKey, speedKey, vsSetup, judgeWait) {
   const PL = PLAYS[playKey] || PLAYS.coop;
   const SP = SPEEDS[speedKey] || SPEEDS.normal;
@@ -686,7 +784,8 @@ function startGame(seed, startAtHost, roster, playKey, speedKey, vsSetup, judgeW
   $('#play-root').style.setProperty('--me', myColor);
   $('#play-root').classList.remove('fever');
   $('#hud-mode').textContent = versus
-    ? PL.label + (SP.key === 'oni' ? ' · 鬼' : '')
+    ? (S.practice ? '練習 ' + (AI_LEVELS[S.aiLevel] || {}).label : PL.label) +
+      (SP.key === 'oni' ? ' · 鬼' : '')
     : SP.label;
   $('#combo').classList.add('hidden');
   $('#verdict').className = '';
@@ -749,6 +848,7 @@ function loop() {
 
     const ins = insOf(g, cur);
     if (g.armed !== cur) { g.armed = cur; armInput(ins); scheduleTick(cur, target); }
+    if (g.ai) aiTurn(cur);
 
     renderPlay(cur, ins, prog, remain);
     if (S.isHost) hostJudgeTick(rel);
@@ -1032,6 +1132,7 @@ function judgeVersus(r) {
       winner, team: g.team.slice(), hp: g.hp.slice(),
       dealt: g.dealt.slice(), taken: g.taken.slice(),
       roster: S.roster, play: 'versus', speed_key: g.SP.key,
+      ai: g.ai ? g.ai.lv : null,
     };
     pub('ctrl', over);
     endGame(over);
@@ -1170,7 +1271,10 @@ function applyVersusResult(m) {
     flash('ok'); sndOk(); buzz(10);
   }
 
-  if (g.out[me] && !g.koShown) { g.koShown = true; toast('あなたは倒れました。仲間を見守りましょう'); }
+  // 1対1では倒れた時点で試合が終わるので、案内は3人以上のときだけ
+  if (g.out[me] && !g.koShown && g.n > 2) {
+    g.koShown = true; toast('あなたは倒れました。仲間を見守りましょう');
+  }
   renderVsHud();
 }
 
@@ -1376,7 +1480,8 @@ function endVersus(m) {
   const rankEl = $('#r-rank');
   rankEl.textContent = draw ? 'DRAW' : (win ? 'WIN' : 'LOSE');
   rankEl.className = draw ? 'r-draw' : (win ? 'r-win' : 'r-lose');
-  $('#r-mode').textContent = 'VERSUS · ' + (SPEEDS[m.speed_key] || SPEEDS.normal).label;
+  $('#r-mode').textContent = (m.ai ? '練習 · AI ' + m.ai.label : 'VERSUS') +
+    ' · ' + (SPEEDS[m.speed_key] || SPEEDS.normal).label;
 
   $('#rl-1').textContent = '与えたダメージ';
   $('#rl-2').textContent = '受けたダメージ';
@@ -1436,7 +1541,7 @@ function leaveRoom(silent) {
   try { if (S.client && S.code) S.client.unsubscribe(topicBase() + '/#'); } catch (e) {}
   cancelAnimationFrame(rafId);
   releaseWakeLock();
-  S.code = null; S.isHost = false; S.roster = []; S.presence.clear();
+  S.code = null; S.isHost = false; S.practice = false; S.roster = []; S.presence.clear();
   S.game = null; S.me.idx = -1;
   S.bestRtt = Infinity; S.offset = 0; S.synced = false; S.syncCount = 0;
   lastRenderRound = -1; tickedFor = -1;
@@ -1561,8 +1666,17 @@ function boot() {
   $('#btn-home').addEventListener('click', () => leaveRoom());
   $('#btn-again').addEventListener('click', () => {
     S.game = null; lastRenderRound = -1; tickedFor = -1;
+    if (S.practice) { openPractice(); return; }   // 練習は強さを選び直せるように
     show('lobby'); renderLobby();
   });
+
+  $('#btn-practice').addEventListener('click', openPractice);
+  $('#btn-practice-back').addEventListener('click', () => { S.practice = false; show('title'); });
+  $('#btn-practice-start').addEventListener('click', startPractice);
+  $$('#ai-levels .prcard').forEach(el =>
+    el.addEventListener('click', () => setAiLevel(el.dataset.lv)));
+  $('#pr-speed-normal').addEventListener('click', () => setPrSpeed('normal'));
+  $('#pr-speed-oni').addEventListener('click', () => setPrSpeed('oni'));
   $('#play-coop').addEventListener('click', () => setPlay('coop'));
   $('#play-versus').addEventListener('click', () => setPlay('versus'));
   $('#speed-normal').addEventListener('click', () => setSpeed('normal'));

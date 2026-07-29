@@ -248,6 +248,19 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
 #r-roast{margin-top:12px;padding:14px 16px;border-radius:13px;background:#2a0a1a;
   border:1.5px solid #5a1030;color:#ff8fb4;font-size:13px;line-height:1.8;text-align:center;font-weight:800}
 
+/* ---------- 練習（AIと1対1） ---------- */
+.prlist{display:flex;flex-direction:column;gap:9px}
+.prcard{background:var(--panel);border:1.5px solid var(--line);border-radius:15px;
+  padding:13px 15px;cursor:pointer}
+.prcard .prtop{display:flex;align-items:center;gap:9px;margin-bottom:4px}
+.prcard b{font-size:16px;font-weight:900}
+.prtag{font-size:9.5px;letter-spacing:.14em;font-weight:900;color:var(--dim);
+  border:1.5px solid var(--line);border-radius:6px;padding:2px 6px}
+.prcard>span{font-size:11px;color:var(--dim);line-height:1.65;display:block}
+.prcard.on{border-color:var(--accent);background:#241f06}
+.prcard.on b{color:var(--accent)}
+.prcard.on .prtag{color:var(--accent);border-color:#f4ff2b55}
+
 /* ---------- あそびかた（起動時の説明） ---------- */
 #howto{position:fixed;inset:0;z-index:120;background:#0b0610f5;display:none;
   align-items:center;justify-content:center;
@@ -337,6 +350,9 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
       <button id="btn-join" class="ghost" style="margin-top:0;flex:0 0 108px;width:108px">参加</button>
     </div>
 
+    <div class="sect">ひとりで練習</div>
+    <button id="btn-practice" class="ghost">AIと1対1で練習する</button>
+
     <button id="btn-howto" class="ghost" style="margin-top:16px">あそびかたを見る</button>
 
     <details style="margin-top:20px">
@@ -398,6 +414,42 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
     <button id="btn-start" disabled>ゲーム開始</button>
     <div id="host-note"></div>
     <button id="btn-leave" class="ghost">ルームを出る</button>
+  </div>
+</section>
+
+<!-- ========== 練習（AIと1対1） ========== -->
+<section class="screen" id="sc-practice">
+  <div class="bgart"></div>
+  <div class="wrap">
+    <h2>AIと1対1</h2>
+    <p class="lead">対戦モードのひとり練習。相手はAIなので、通信も待ち合わせもいりません。<br>
+      おたがい HP1500。相手よりキレイに合わせたほうがダメージを与えます。</p>
+
+    <div class="sect">AIの強さ</div>
+    <div class="prlist" id="ai-levels">
+      <div class="prcard" data-lv="easy">
+        <div class="prtop"><b>よわい</b><span class="prtag">LV.1</span></div>
+        <span>ズレが大きく、押し忘れや方向ミスもよくある。まず合図の形をおぼえる用</span>
+      </div>
+      <div class="prcard on" data-lv="mid">
+        <div class="prtop"><b>ふつう</b><span class="prtag">LV.2</span></div>
+        <span>人間の平均くらい。ちゃんと集中すれば勝てる、いい練習相手</span>
+      </div>
+      <div class="prcard" data-lv="hard">
+        <div class="prtop"><b>つよい</b><span class="prtag">LV.3</span></div>
+        <span>ほとんどズレない。これに勝てたら本番でもたぶん勝てる</span>
+      </div>
+    </div>
+
+    <div class="sect">スピード</div>
+    <div class="modes">
+      <div class="mode on" id="pr-speed-normal"><b>ふつう</b><span>ゆっくり始まって<br>だんだん速くなる</span></div>
+      <div class="mode oni" id="pr-speed-oni"><b>鬼</b><span>最初から高速<br>判定も厳しい</span></div>
+    </div>
+
+    <div class="spacer"></div>
+    <button id="btn-practice-start" class="hot">AIと戦う</button>
+    <button id="btn-practice-back" class="ghost">もどる</button>
   </div>
 </section>
 
@@ -533,6 +585,8 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
         </div>
         <p style="margin-top:14px">スピードは<b>ふつう</b>と<b>鬼</b>。鬼は最初から高速で判定も厳しめ。<br>
         どちらもホストがロビーで選べます。</p>
+        <p>ひとりで練習したいときは、タイトルの<b>「AIと1対1で練習する」</b>から。<br>
+        AIの強さは3段階えらべます。</p>
       </div>
     </div>
 
