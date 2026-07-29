@@ -33,16 +33,16 @@ const AUTOPLAY = ({ bias, jitter }) => {
     if (g && !g.over) {
       const rel = A.toHost(A.now()) - g.startAtHost;
       let cur = -1;
-      for (let i = 0; i < 400; i++) { if (rel < A.ROUND_AT[i] + 380) { cur = i; break; } }
+      for (let i = 0; i < 400; i++) { if (rel < g.at[i] + 380) { cur = i; break; } }
       if (cur >= 0) {
         if (cur !== doneFor && !plan) {
-          const ins = A.instructionOf(g.seed, cur, g.n);
+          const ins = A.instructionOf(g.seed, cur, g.n, g.M.tutorial);
           const myIdx = Math.max(0, S.me.idx);
           let act = null, dir = null;
           if (ins.type === 'ALL_TAP') act = 'tap';
           else if (ins.type === 'SWIPE') { act = 'swipe'; dir = ins.dir; }
           else if (ins.type === 'SOLO_TAP' && ins.who === myIdx) act = 'tap';
-          const at = A.toLocal(g.startAtHost + A.ROUND_AT[cur]) + bias + rnd() * jitter;
+          const at = A.toLocal(g.startAtHost + g.at[cur]) + bias + rnd() * jitter;
           plan = { round: cur, act, dir, at, ins: ins.type };
         }
         if (plan && plan.round === cur && A.now() >= plan.at) {
@@ -106,6 +106,13 @@ const AUTOPLAY = ({ bias, jitter }) => {
   }
 
   await pages[0].screenshot({ path: 'shot-lobby.png' });
+
+  // モード選択（MODE=oni で鬼モード）
+  if (process.env.MODE === 'oni') {
+    await pages[0].click('#mode-oni');
+    await wait(300);
+    console.log('mode =', await pages[0].evaluate(() => window.__SYNCTAP.S.mode));
+  }
 
   // 自動プレイを仕込む
   for (let i = 0; i < 3; i++) await pages[i].evaluate(AUTOPLAY, SKILL[i]);

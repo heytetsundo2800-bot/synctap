@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no,maximum-scale=1">
-<meta name="theme-color" content="#0b0d17">
+<meta name="theme-color" content="#05060f">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -15,147 +15,270 @@
 <title>シンクロ・タップ</title>
 <style>
 :root{
-  --bg:#0b0d17; --bg2:#151931; --fg:#f4f6ff; --dim:#8b93b8;
-  --ok:#39d98a; --warn:#ffb020; --ng:#ff4d6d;
+  --bg:#05060f; --panel:#0e1124; --line:#232a52; --fg:#f4f6ff; --dim:#8d95bd;
+  --ok:#39d98a; --warn:#ffb020; --ng:#ff3d6b; --gold:#ffd23f;
   --me:#4dabff;
+  --safe-t:env(safe-area-inset-top,0px);
+  --safe-b:env(safe-area-inset-bottom,0px);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;margin:0}
+html,body{height:100%;margin:0;padding:0}
 body{
   background:var(--bg); color:var(--fg);
   font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
   overscroll-behavior:none; user-select:none; -webkit-user-select:none;
-  touch-action:manipulation;
-  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  touch-action:manipulation; overflow:hidden;
 }
-.screen{display:none;height:100dvh;flex-direction:column}
+.screen{display:none;height:100dvh;flex-direction:column;position:relative;overflow:hidden}
 .screen.on{display:flex}
 
-/* ---- 共通パーツ ---- */
-.wrap{max-width:520px;margin:0 auto;width:100%;padding:22px;flex:1;display:flex;flex-direction:column}
-h1{font-size:34px;letter-spacing:.06em;margin:0 0 2px;font-weight:900}
-h1 small{display:block;font-size:12px;letter-spacing:.34em;color:var(--dim);font-weight:600;margin-bottom:8px}
-.lead{color:var(--dim);font-size:13.5px;line-height:1.75;margin:0 0 22px}
-label{display:block;font-size:12px;color:var(--dim);margin:16px 0 6px;letter-spacing:.06em}
-input,select{
-  width:100%;padding:15px 16px;font-size:17px;border-radius:14px;
-  border:1px solid #2b3157;background:#10142a;color:var(--fg);outline:none;
-  font-family:inherit;
-}
-input:focus,select:focus{border-color:var(--me)}
-button{
-  width:100%;padding:17px;font-size:17px;font-weight:800;border-radius:14px;border:0;
-  background:var(--me);color:#04101f;margin-top:12px;font-family:inherit;cursor:pointer;
-  letter-spacing:.04em;
-}
-button.ghost{background:#1b2142;color:var(--fg);border:1px solid #2b3157}
-button:disabled{opacity:.35}
-.row{display:flex;gap:10px}
-.row>*{flex:1}
-.netstat{font-size:11.5px;letter-spacing:.05em;padding:7px 12px;border-radius:999px;display:inline-block;background:#1b2142;color:var(--dim)}
-.netstat.ok{color:var(--ok)}.netstat.ng{color:var(--ng)}.netstat.wait{color:var(--warn)}
-.spacer{flex:1}
-.foot{font-size:11px;color:#5b628a;text-align:center;padding-top:14px;line-height:1.7}
+/* 全画面のエフェクト層 */
+#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:60}
 
-/* ---- ロビー ---- */
-.codebox{background:#10142a;border:1px solid #2b3157;border-radius:18px;padding:18px;text-align:center;margin-bottom:14px}
-.codebox .lbl{font-size:11px;color:var(--dim);letter-spacing:.22em}
-.codebox .code{font-size:52px;font-weight:900;letter-spacing:.22em;line-height:1.15;font-variant-numeric:tabular-nums}
-.syncq{font-size:12px;text-align:center;padding:9px;border-radius:12px;background:#10142a;margin-bottom:14px;letter-spacing:.04em}
+/* ---------- 背景 ---------- */
+.aurora{position:absolute;inset:-20%;z-index:0;pointer-events:none;filter:blur(58px);opacity:.6}
+.aurora i{position:absolute;display:block;border-radius:50%;mix-blend-mode:screen;animation:drift 15s ease-in-out infinite}
+.aurora i:nth-child(1){width:56vw;height:56vw;background:#ff3d6b;top:2%;left:-14%}
+.aurora i:nth-child(2){width:52vw;height:52vw;background:#4dabff;top:34%;right:-16%;animation-delay:-5s}
+.aurora i:nth-child(3){width:46vw;height:46vw;background:#ffd23f;bottom:2%;left:16%;animation-delay:-9s}
+@keyframes drift{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(7%,-9%) scale(1.14)}66%{transform:translate(-6%,7%) scale(.9)}}
+.grid{position:absolute;inset:0;z-index:0;pointer-events:none;opacity:.3;
+  background-image:linear-gradient(#ffffff0a 1px,transparent 1px),linear-gradient(90deg,#ffffff0a 1px,transparent 1px);
+  background-size:44px 44px;
+  -webkit-mask-image:radial-gradient(circle at 50% 42%,#000 12%,transparent 72%);
+  mask-image:radial-gradient(circle at 50% 42%,#000 12%,transparent 72%)}
+
+/* ---------- 共通 ---------- */
+.wrap{position:relative;z-index:2;max-width:520px;margin:0 auto;width:100%;flex:1;
+  display:flex;flex-direction:column;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:calc(var(--safe-t) + 26px) 22px calc(var(--safe-b) + 26px)}
+/* 中身が縦に収まらないとき、要素が潰れずにスクロールするようにする */
+.wrap>*:not(.spacer){flex-shrink:0}
+.lead{color:var(--dim);font-size:13.5px;line-height:1.8;margin:0 0 20px}
+label{display:block;font-size:11px;color:var(--dim);margin:16px 0 7px;letter-spacing:.14em}
+input,select{width:100%;padding:15px 16px;font-size:17px;border-radius:14px;
+  border:1px solid var(--line);background:#0b0e1e;color:var(--fg);outline:none;font-family:inherit}
+input:focus,select:focus{border-color:var(--me);box-shadow:0 0 0 3px #4dabff22}
+button{width:100%;padding:17px;font-size:17px;font-weight:800;border-radius:15px;border:0;
+  font-family:inherit;cursor:pointer;letter-spacing:.05em;margin-top:12px;color:#04101f;
+  background:linear-gradient(135deg,#7cc4ff,#4dabff);
+  box-shadow:0 8px 26px -10px #4dabffcc}
+button:active{transform:translateY(1px)}
+button.ghost{background:#141834;color:var(--fg);border:1px solid var(--line);box-shadow:none}
+button:disabled{opacity:.3;box-shadow:none}
+.row{display:flex;gap:10px}
+.spacer{flex:1;min-height:14px}
+.sect{font-size:10.5px;color:var(--dim);letter-spacing:.2em;margin:22px 0 6px}
+.foot{font-size:10.5px;color:#5b628a;text-align:center;padding-top:16px;line-height:1.9}
+.netstat{font-size:11px;letter-spacing:.06em;padding:7px 14px;border-radius:999px;
+  display:inline-block;background:#141834;color:var(--dim);border:1px solid var(--line)}
+.netstat.ok{color:var(--ok);border-color:#39d98a44}
+.netstat.ng{color:var(--ng);border-color:#ff3d6b44}
+.netstat.wait{color:var(--warn);border-color:#ffb02044}
+
+/* ---------- タイトル ---------- */
+.logo{text-align:center;margin:6px 0 4px}
+.orbs{display:flex;justify-content:center;gap:16px;margin-bottom:20px}
+.orbs i{width:18px;height:18px;border-radius:50%;display:block;animation:orb 1.5s ease-in-out infinite}
+.orbs i:nth-child(1){background:#ff3d6b;box-shadow:0 0 24px 4px #ff3d6b99}
+.orbs i:nth-child(2){background:#4dabff;box-shadow:0 0 24px 4px #4dabff99;animation-delay:.12s}
+.orbs i:nth-child(3){background:#ffd23f;box-shadow:0 0 24px 4px #ffd23f99;animation-delay:.24s}
+@keyframes orb{0%,100%{transform:scale(1);opacity:.55}45%{transform:scale(1.5);opacity:1}}
+.kicker{font-size:10.5px;letter-spacing:.52em;color:var(--dim);font-weight:700;margin-bottom:6px}
+h1{margin:0;font-size:clamp(34px,10vw,46px);font-weight:900;letter-spacing:.02em;line-height:1.1;
+  background:linear-gradient(100deg,#fff 8%,#9fd2ff 40%,#ffd8e4 68%,#fff 92%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 0 22px #4dabff55)}
+.tag{margin:12px 0 0;font-size:13px;color:var(--dim);letter-spacing:.12em}
+.rules{display:flex;gap:8px;margin:22px 0 4px}
+.rules div{flex:1;background:#0e112480;border:1px solid var(--line);border-radius:13px;
+  padding:12px 8px;text-align:center;font-size:10.5px;color:var(--dim);line-height:1.6}
+.rules b{display:block;font-size:19px;color:var(--fg);margin-bottom:5px;font-weight:900}
+
+/* ---------- ロビー ---------- */
+h2{font-size:23px;margin:0 0 6px;font-weight:900}
+.codebox{background:linear-gradient(160deg,#141a3a,#0b0e1e);border:1px solid var(--line);
+  border-radius:20px;padding:20px;text-align:center;margin-bottom:12px;position:relative;overflow:hidden}
+.codebox::after{content:'';position:absolute;inset:0;
+  background:radial-gradient(circle at 50% 0%,#4dabff26,transparent 62%)}
+.codebox .lbl{font-size:10px;color:var(--dim);letter-spacing:.3em;position:relative}
+.codebox .code{font-size:54px;font-weight:900;letter-spacing:.24em;line-height:1.2;
+  font-variant-numeric:tabular-nums;position:relative;text-shadow:0 0 30px #4dabff88}
+.syncq{font-size:12px;text-align:center;padding:10px;border-radius:12px;background:#0e1124;
+  border:1px solid var(--line);letter-spacing:.05em}
 .syncq.ok{color:var(--ok)}.syncq.warn{color:var(--warn)}.syncq.ng{color:var(--ng)}.syncq.wait{color:var(--dim)}
 #player-list{display:flex;flex-direction:column;gap:9px}
-.pcard{display:grid;grid-template-columns:16px 1fr auto;align-items:center;gap:12px;
-  padding:15px 16px;border-radius:14px;background:#10142a;border:1px solid #232847}
-.pcard .pdot{width:14px;height:14px;border-radius:50%;background:var(--c);box-shadow:0 0 16px var(--c)}
+.pcard{display:grid;grid-template-columns:16px 1fr auto;align-items:center;gap:13px;
+  padding:15px 16px;border-radius:15px;background:#0e1124;border:1px solid #1b2145}
+.pcard .pdot{width:14px;height:14px;border-radius:50%;background:var(--c);box-shadow:0 0 18px var(--c)}
 .pcard .pname{font-weight:800;font-size:16px}
-.pcard .pmeta{font-size:11px;color:var(--dim);text-align:right;letter-spacing:.04em}
-.pcard.empty{opacity:.32}
-.pcard.empty .pdot{background:#39406b;box-shadow:none}
-.pcard.me{border-color:var(--c)}
-.youtag{font-size:10px;background:#2b3157;padding:3px 7px;border-radius:6px;margin-left:8px;vertical-align:2px;color:var(--dim)}
-#host-note{font-size:11.5px;color:var(--dim);text-align:center;margin-top:10px}
+.pcard .pmeta{font-size:10.5px;color:var(--dim);text-align:right;letter-spacing:.05em}
+.pcard.empty{opacity:.28}.pcard.empty .pdot{background:#39406b;box-shadow:none}
+.pcard.me{border-color:var(--c);box-shadow:0 0 0 1px var(--c)}
+.youtag{font-size:9.5px;background:#232a52;padding:3px 7px;border-radius:6px;margin-left:8px;
+  vertical-align:2px;color:var(--dim);letter-spacing:.08em}
+#host-note{font-size:11px;color:var(--dim);text-align:center;margin-top:10px}
 
-/* ---- プレイ ---- */
-#play-root{position:relative;height:100dvh;display:flex;flex-direction:column;overflow:hidden;touch-action:none}
-#hud{display:flex;align-items:center;gap:12px;padding:12px 16px;font-size:12px;color:var(--dim);letter-spacing:.06em}
-#hud-lives{color:var(--ng);font-size:16px;letter-spacing:.14em}
-#hud-score{margin-left:auto;font-weight:900;color:var(--fg);font-size:16px;font-variant-numeric:tabular-nums}
-#pad{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;touch-action:none}
-.instr{text-align:center;z-index:3;pointer-events:none}
-#instr-main{font-size:clamp(46px,15vw,86px);font-weight:900;line-height:1.02;letter-spacing:.02em}
-#instr-sub{font-size:13.5px;color:var(--dim);margin-top:10px;letter-spacing:.06em}
-.i-all #instr-main{color:#fff}
-.i-no #instr-main,.i-solo-other #instr-main{color:var(--ng)}
-.i-swipe #instr-main{color:var(--warn);font-size:clamp(70px,24vw,140px)}
-.i-solo-me #instr-main{color:var(--ok)}
+/* モード選択 */
+.modes{display:flex;gap:10px}
+.mode{flex:1;background:#0e1124;border:1px solid var(--line);border-radius:15px;padding:14px 10px;
+  text-align:center;cursor:pointer;transition:.16s}
+.mode b{display:block;font-size:16px;font-weight:900;margin-bottom:5px}
+.mode span{font-size:10px;color:var(--dim);letter-spacing:.04em;line-height:1.55;display:block}
+.mode.on{border-color:var(--me);background:#101a3a;box-shadow:0 0 0 1px var(--me)}
+.mode.oni.on{border-color:var(--ng);box-shadow:0 0 0 1px var(--ng);background:#2a0f1d}
+.mode.oni.on b{color:#ff7a8f}
+
+/* ---------- プレイ ---------- */
+#play-root{position:relative;height:100dvh;display:flex;flex-direction:column;
+  overflow:hidden;touch-action:none;z-index:2}
+#hud{display:flex;align-items:flex-start;gap:12px;
+  padding:calc(var(--safe-t) + 36px) 20px 0;font-size:11px;color:var(--dim);letter-spacing:.1em}
+#hud-left{display:flex;flex-direction:column;gap:6px}
+#hud-score{font-weight:900;color:var(--fg);font-size:23px;font-variant-numeric:tabular-nums;
+  letter-spacing:0;line-height:1;transition:transform .12s}
+#hud-score.bump{transform:scale(1.2)}
+#hud-meta{font-size:10px;letter-spacing:.16em}
+#hud-right{margin-left:auto;text-align:right}
+#hud-lives{font-size:19px;letter-spacing:.1em;line-height:1}
+#hud-lives .on{color:var(--ng);text-shadow:0 0 12px #ff3d6b99}
+#hud-lives .off{color:#2a3057}
+#hud-mode{font-size:9.5px;letter-spacing:.2em;margin-top:7px;color:var(--dim)}
+
+#pad{flex:1;position:relative;display:flex;align-items:center;justify-content:center;touch-action:none}
 #ring-wrap{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:1;pointer-events:none}
-#ring-wrap svg{width:min(78vw,330px);height:min(78vw,330px);transform:rotate(-90deg)}
-#ring-bg{fill:none;stroke:#1c2242;stroke-width:3}
-#ring-fg{fill:none;stroke:var(--me);stroke-width:5;stroke-linecap:round;transition:stroke .12s}
-#ring-wrap.near #ring-fg{stroke:#fff}
-#countdown{position:absolute;font-size:120px;font-weight:900;opacity:.14;z-index:0}
-#verdict{position:absolute;bottom:12%;font-size:19px;font-weight:900;letter-spacing:.08em;z-index:4;pointer-events:none}
-#verdict.perfect{color:#ffd23f}#verdict.good{color:var(--ok)}#verdict.ok{color:#6ec6ff}#verdict.bad{color:var(--ng)}
-#hud-combo{color:#ffd23f;font-weight:900}
-#teamflash{position:absolute;inset:0;z-index:2;pointer-events:none;opacity:0}
-#teamflash.ok{background:radial-gradient(circle at 50% 50%,rgba(57,217,138,.30),transparent 62%)}
-#teamflash.ng{background:radial-gradient(circle at 50% 50%,rgba(255,77,109,.34),transparent 62%)}
-#teamflash.go{animation:fl .3s ease-out}
-@keyframes fl{0%{opacity:1}100%{opacity:0}}
-#play-root.fx-good{animation:pg .16s}
-#play-root.fx-bad{animation:pb .22s}
-@keyframes pg{50%{background:#111a2a}}
-@keyframes pb{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
-.hint{padding:10px 16px 18px;text-align:center;font-size:11px;color:#4d5479}
+#ring-wrap svg{width:min(80vw,340px);height:min(80vw,340px);transform:rotate(-90deg)}
+#ring-bg{fill:none;stroke:#161c3c;stroke-width:3}
+#ring-fg{fill:none;stroke:var(--me);stroke-width:6;stroke-linecap:round}
+#ring-wrap.near #ring-fg{stroke:#fff;stroke-width:8}
+#countdown{position:absolute;font-size:150px;font-weight:900;opacity:.1;z-index:0;
+  font-variant-numeric:tabular-nums}
+.instr{text-align:center;z-index:3;pointer-events:none}
+#instr-main{font-size:clamp(46px,15vw,84px);font-weight:900;line-height:1.02;letter-spacing:.02em}
+#instr-sub{font-size:13px;color:var(--dim);margin-top:12px;letter-spacing:.08em}
+.i-all #instr-main{color:#fff;text-shadow:0 0 34px #ffffff55}
+.i-no #instr-main,.i-solo-other #instr-main{color:var(--ng);text-shadow:0 0 34px #ff3d6b66}
+.i-swipe #instr-main{color:var(--warn);font-size:clamp(76px,26vw,150px);text-shadow:0 0 40px #ffb02066}
+.i-solo-me #instr-main{color:var(--ok);text-shadow:0 0 34px #39d98a66}
+.instr.pop{animation:instrPop .22s cubic-bezier(.2,1.6,.4,1)}
+@keyframes instrPop{from{transform:scale(.82);opacity:.2}to{transform:scale(1);opacity:1}}
 
-/* ---- 結果 ---- */
-.rgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0}
-.rcell{background:#10142a;border:1px solid #232847;border-radius:14px;padding:15px;text-align:center}
-.rcell b{display:block;font-size:30px;font-weight:900;font-variant-numeric:tabular-nums}
-.rcell span{font-size:10.5px;color:var(--dim);letter-spacing:.14em}
-.accrow{display:grid;grid-template-columns:76px 1fr 62px;align-items:center;gap:10px;margin:9px 0;font-size:12px}
-.accbar{height:9px;background:#1b2142;border-radius:999px;overflow:hidden}
-.accbar i{display:block;height:100%;background:var(--c);border-radius:999px}
+/* 判定表示：画面の上寄せ・特大 */
+#judge{position:absolute;left:0;right:0;top:22%;z-index:40;text-align:center;pointer-events:none}
+#verdict{font-size:clamp(40px,13.5vw,78px);font-weight:900;letter-spacing:.03em;line-height:1;
+  opacity:0;font-style:italic}
+#verdict.show{animation:vpop .66s cubic-bezier(.15,1.5,.35,1) forwards}
+@keyframes vpop{0%{opacity:0;transform:scale(.4) rotate(-6deg)}
+  22%{opacity:1;transform:scale(1.22) rotate(2deg)}
+  38%{transform:scale(1) rotate(0)}
+  76%{opacity:1}100%{opacity:0;transform:scale(1.05)}}
+#verdict.v-perfect{color:var(--gold);text-shadow:0 0 26px #ffd23f,0 0 62px #ffae00aa}
+#verdict.v-good{color:var(--ok);text-shadow:0 0 22px #39d98aaa}
+#verdict.v-ok{color:#7cc4ff;text-shadow:0 0 18px #4dabff99}
+#verdict.v-bad{color:var(--ng);text-shadow:0 0 22px #ff3d6baa}
+#gain{margin-top:8px;font-size:clamp(22px,7vw,38px);font-weight:900;opacity:0;
+  font-variant-numeric:tabular-nums;color:#fff}
+#gain.show{animation:gpop 1s cubic-bezier(.1,1,.3,1) forwards}
+@keyframes gpop{0%{opacity:0;transform:translateY(18px) scale(.7)}
+  18%{opacity:1;transform:translateY(0) scale(1.14)}
+  32%{transform:scale(1)}70%{opacity:1}100%{opacity:0;transform:translateY(-34px)}}
+
+/* コンボ */
+/* コンボも指がかぶらない上側に置く */
+#combo{position:absolute;left:0;right:0;top:9%;z-index:38;text-align:center;pointer-events:none;
+  transition:opacity .2s}
+#combo-n{font-size:clamp(34px,10vw,58px);font-weight:900;line-height:.9;font-style:italic;
+  font-variant-numeric:tabular-nums;
+  background:linear-gradient(180deg,#fff,#ffd23f);-webkit-background-clip:text;background-clip:text;
+  color:transparent;filter:drop-shadow(0 0 18px #ffae0088)}
+#combo-l{font-size:9.5px;letter-spacing:.42em;color:var(--gold);font-weight:800;margin-top:1px}
+#combo.hidden{opacity:0}
+#combo.beat #combo-n{animation:cpop .3s cubic-bezier(.2,1.7,.4,1)}
+@keyframes cpop{0%{transform:scale(1.55)}100%{transform:scale(1)}}
+
+/* 全画面フラッシュ */
+#flash{position:absolute;inset:0;z-index:30;pointer-events:none;opacity:0}
+#flash.f-perfect{background:radial-gradient(circle at 50% 42%,#ffd23f66,#ff8a0022 42%,transparent 72%)}
+#flash.f-good{background:radial-gradient(circle at 50% 42%,#39d98a55,transparent 66%)}
+#flash.f-ok{background:radial-gradient(circle at 50% 42%,#4dabff44,transparent 66%)}
+#flash.f-bad{background:radial-gradient(circle at 50% 50%,#ff3d6b00 18%,#ff3d6b55 100%)}
+#flash.go{animation:fl .46s ease-out}
+@keyframes fl{0%{opacity:1}100%{opacity:0}}
+#play-root.shake{animation:shk .34s cubic-bezier(.36,.07,.19,.97)}
+@keyframes shk{10%,90%{transform:translateX(-5px)}30%,70%{transform:translateX(8px)}50%{transform:translateX(-9px)}}
+#play-root.fever::before{content:'';position:absolute;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(circle at 50% 100%,#ff3d6b26,transparent 58%);animation:fev 1.4s ease-in-out infinite}
+@keyframes fev{0%,100%{opacity:.4}50%{opacity:1}}
+.hint{padding:8px 16px calc(var(--safe-b) + 16px);text-align:center;font-size:10.5px;color:#454c73}
+
+/* ---------- 結果 ---------- */
+.rank{text-align:center;margin:4px 0 8px}
+.rank b{font-size:clamp(78px,26vw,132px);font-weight:900;line-height:1;font-style:italic;display:block;
+  background:linear-gradient(160deg,#fff,#ffd23f 45%,#ff8a3d);-webkit-background-clip:text;
+  background-clip:text;color:transparent;filter:drop-shadow(0 0 30px #ffae0077);
+  animation:rankIn .7s cubic-bezier(.15,1.5,.3,1)}
+@keyframes rankIn{0%{transform:scale(.3) rotate(-14deg);opacity:0}100%{transform:scale(1) rotate(0);opacity:1}}
+.rank span{font-size:10.5px;letter-spacing:.36em;color:var(--dim)}
+.rgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+.rcell{background:#0e1124;border:1px solid #1b2145;border-radius:15px;padding:15px;text-align:center}
+.rcell b{display:block;font-size:29px;font-weight:900;font-variant-numeric:tabular-nums}
+.rcell span{font-size:9.5px;color:var(--dim);letter-spacing:.16em}
+.accrow{display:grid;grid-template-columns:74px 1fr 60px;align-items:center;gap:10px;margin:10px 0;font-size:12px}
+.accbar{height:10px;background:#151a38;border-radius:999px;overflow:hidden}
+.accbar i{display:block;height:100%;background:var(--c);border-radius:999px;
+  box-shadow:0 0 12px var(--c);animation:grow .8s cubic-bezier(.2,1,.3,1)}
+@keyframes grow{from{width:0}}
 .accms{text-align:right;color:var(--dim);font-variant-numeric:tabular-nums}
 .accname{font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#r-mvp{text-align:center;font-size:12.5px;color:#ffd23f;margin-top:14px;min-height:18px}
-h2{font-size:22px;margin:0 0 4px;font-weight:900}
-.sect{font-size:11px;color:var(--dim);letter-spacing:.18em;margin:22px 0 4px}
+#r-mvp{text-align:center;font-size:12.5px;color:var(--gold);margin-top:14px;min-height:18px}
 </style>
 </head>
 <body>
 
+<canvas id="fx"></canvas>
+
 <!-- ========== タイトル ========== -->
 <section class="screen on" id="sc-title">
+  <div class="aurora"><i></i><i></i><i></i></div>
+  <div class="grid"></div>
   <div class="wrap">
-    <h1><small>SYNC TAP</small>シンクロ・タップ</h1>
-    <p class="lead">
-      3人が同じ部屋で、それぞれのスマホを持って遊びます。<br>
-      画面の指示に合わせて、3人が「いっせーの」でタップ。<br>
-      ひとりでもズレたら失敗。だんだん速くなります。
-    </p>
+    <div class="logo">
+      <div class="orbs"><i></i><i></i><i></i></div>
+      <div class="kicker">SYNC TAP</div>
+      <h1>シンクロ・タップ</h1>
+      <p class="tag">3人、いっせーの。</p>
+    </div>
 
-    <span class="netstat wait">接続確認中…</span>
+    <div class="rules">
+      <div><b>3</b>人で<br>同じ部屋</div>
+      <div><b>1</b>人でも<br>ズレたら失敗</div>
+      <div><b>∞</b>どんどん<br>速くなる</div>
+    </div>
+
+    <div style="text-align:center;margin-top:20px"><span class="netstat wait">接続確認中…</span></div>
 
     <label for="in-name">なまえ</label>
     <input id="in-name" maxlength="8" placeholder="てつじん" autocomplete="off">
 
-    <label for="broker-select">通信経路（つながらない時だけ変更）</label>
-    <select id="broker-select"></select>
-
     <div class="sect">はじめる</div>
-    <button id="btn-create">ルームを作る（あなたがホスト）</button>
+    <button id="btn-create">ルームを作る</button>
 
     <label for="in-code">友達が作ったルームに入る</label>
     <div class="row">
       <input id="in-code" inputmode="numeric" maxlength="4" placeholder="4桁の数字" autocomplete="off">
-      <button id="btn-join" class="ghost" style="margin-top:0">参加</button>
+      <button id="btn-join" class="ghost" style="margin-top:0;flex:0 0 108px;width:108px">参加</button>
     </div>
+
+    <details style="margin-top:20px">
+      <summary style="font-size:11px;color:var(--dim);letter-spacing:.1em;cursor:pointer">つながらないとき</summary>
+      <label for="broker-select">通信経路を変える</label>
+      <select id="broker-select"></select>
+    </details>
 
     <div class="spacer"></div>
     <div class="foot">
-      まずホストが1台でルームを作り、表示された4桁を残り2人が入力します。<br>
-      <span id="a2hs">ブラウザの共有メニューから「ホーム画面に追加」すると、アプリのように開けます。</span><br>
+      ホストが1台でルームを作り、出た4桁を残り2人が入力します。<br>
+      <span id="a2hs">共有メニューの「ホーム画面に追加」でアプリになります。</span><br>
       <span id="build-stamp"></span>
     </div>
   </div>
@@ -163,42 +286,56 @@ h2{font-size:22px;margin:0 0 4px;font-weight:900}
 
 <!-- ========== ロビー ========== -->
 <section class="screen" id="sc-lobby">
+  <div class="aurora" style="opacity:.32"><i></i><i></i><i></i></div>
   <div class="wrap">
     <h2>メンバーを待っています</h2>
     <p class="lead" style="margin-bottom:14px">この4桁を、残りの2人に伝えてください。</p>
 
     <div class="codebox">
-      <div class="lbl">ルームコード</div>
+      <div class="lbl">ROOM CODE</div>
       <div class="code" id="lobby-code">0000</div>
     </div>
     <button id="btn-copy" class="ghost" style="margin-top:0">参加URLをコピー</button>
 
-    <div class="sect">時計のズレ（これが小さいほど公平に判定できます）</div>
+    <div class="sect">時計のズレ（小さいほど公平に判定できます）</div>
     <div class="syncq wait" id="sync-q">計測中…</div>
 
     <div class="sect">メンバー</div>
     <div id="player-list"></div>
 
+    <div id="mode-block">
+      <div class="sect">モード</div>
+      <div class="modes">
+        <div class="mode on" id="mode-normal"><b>ふつう</b><span>ゆっくり始まって<br>だんだん速くなる</span></div>
+        <div class="mode oni" id="mode-oni"><b>鬼モード</b><span>最初から高速<br>ライフ3・判定も厳しい</span></div>
+      </div>
+    </div>
+
     <div class="spacer"></div>
-    <span class="netstat wait" style="align-self:center;margin-bottom:10px">…</span>
+    <div style="text-align:center;margin-bottom:10px"><span class="netstat wait">…</span></div>
     <button id="btn-start" disabled>ゲーム開始</button>
     <div id="host-note"></div>
+    <button id="btn-leave" class="ghost">ルームを出る</button>
   </div>
 </section>
 
 <!-- ========== プレイ ========== -->
 <section class="screen" id="sc-play">
   <div id="play-root">
+    <div id="flash"></div>
+
     <div id="hud">
-      <span id="hud-lives">♥♥♥</span>
-      <span id="hud-round">R1</span>
-      <span id="hud-speed">SPEED 30</span>
-      <span id="hud-combo"></span>
-      <span id="hud-score">0</span>
+      <div id="hud-left">
+        <div id="hud-score">0</div>
+        <div id="hud-meta"><span id="hud-round">R1</span> · <span id="hud-speed">SPEED 30</span></div>
+      </div>
+      <div id="hud-right">
+        <div id="hud-lives"></div>
+        <div id="hud-mode"></div>
+      </div>
     </div>
 
     <div id="pad">
-      <div id="teamflash" class="teamflash"></div>
       <div id="countdown">3</div>
       <div id="ring-wrap">
         <svg viewBox="0 0 100 100">
@@ -210,7 +347,16 @@ h2{font-size:22px;margin:0 0 4px;font-weight:900}
         <div id="instr-main">タップ</div>
         <div id="instr-sub">3人いっせいに</div>
       </div>
-      <div id="verdict" class="verdict"></div>
+
+      <div id="judge">
+        <div id="verdict"></div>
+        <div id="gain"></div>
+      </div>
+
+      <div id="combo" class="hidden">
+        <div id="combo-n">0</div>
+        <div id="combo-l">COMBO</div>
+      </div>
     </div>
 
     <div class="hint">画面のどこでもタップ／スワイプできます</div>
@@ -219,9 +365,9 @@ h2{font-size:22px;margin:0 0 4px;font-weight:900}
 
 <!-- ========== 結果 ========== -->
 <section class="screen" id="sc-result">
+  <div class="aurora" style="opacity:.4"><i></i><i></i><i></i></div>
   <div class="wrap">
-    <h2>ゲームオーバー</h2>
-    <p class="lead" style="margin-bottom:0">3人の呼吸、どれくらい合っていたか。</p>
+    <div class="rank"><b id="r-rank">A</b><span id="r-mode">NORMAL</span></div>
 
     <div class="rgrid">
       <div class="rcell"><b id="r-score">0</b><span>SCORE</span></div>
@@ -236,6 +382,7 @@ h2{font-size:22px;margin:0 0 4px;font-weight:900}
 
     <div class="spacer"></div>
     <button id="btn-again">もう一度</button>
+    <button id="btn-home" class="ghost">ホームに戻る</button>
   </div>
 </section>
 
