@@ -36,7 +36,7 @@ const AUTOPLAY = ({ bias, jitter }) => {
       for (let i = 0; i < 400; i++) { if (rel < g.at[i] + 380) { cur = i; break; } }
       if (cur >= 0) {
         if (cur !== doneFor && !plan) {
-          const ins = A.instructionOf(g.seed, cur, g.n, g.M.tutorial);
+          const ins = A.insOf(g, cur);
           const myIdx = Math.max(0, S.me.idx);
           let act = null, dir = null;
           if (ins.type === 'ALL_TAP') act = 'tap';
@@ -107,12 +107,13 @@ const AUTOPLAY = ({ bias, jitter }) => {
 
   await pages[0].screenshot({ path: 'shot-lobby.png' });
 
-  // モード選択（MODE=oni で鬼モード）
-  if (process.env.MODE === 'oni') {
-    await pages[0].click('#mode-oni');
-    await wait(300);
-    console.log('mode =', await pages[0].evaluate(() => window.__SYNCTAP.S.mode));
-  }
+  // モード選択（PLAY=versus で対戦、MODE=oni で鬼スピード）
+  if (process.env.PLAY === 'versus') await pages[0].click('#play-versus');
+  if (process.env.MODE === 'oni') await pages[0].click('#speed-oni');
+  await wait(300);
+  console.log('mode =', await pages[0].evaluate(() => {
+    const S = window.__SYNCTAP.S; return S.play + ' / ' + S.speed;
+  }));
 
   // 自動プレイを仕込む
   for (let i = 0; i < N; i++) await pages[i].evaluate(AUTOPLAY, SKILL[i]);
@@ -128,7 +129,7 @@ const AUTOPLAY = ({ bias, jitter }) => {
   if (pages[1]) await pages[1].screenshot({ path: 'shot-play2.png' });
 
   // 終了まで待つ
-  for (let t = 0; t < 90; t++) {
+  for (let t = 0; t < 170; t++) {
     const over = await pages[0].evaluate(() => window.__SYNCTAP.S.screen === 'result');
     if (over) break;
     await wait(1000);
@@ -140,7 +141,13 @@ const AUTOPLAY = ({ bias, jitter }) => {
   });
   console.log('\n--- RESULT ---');
   console.log('screen:', res.screen);
-  if (res.r) {
+  if (res.r && res.r.vs) {
+    console.log('VERSUS  winner team:', res.r.winner, 'rounds:', res.r.round, 'speed:', res.r.speed);
+    console.log('team :', JSON.stringify(res.r.team));
+    console.log('hp   :', JSON.stringify(res.r.hp));
+    console.log('dealt:', JSON.stringify(res.r.dealt));
+    console.log('taken:', JSON.stringify(res.r.taken));
+  } else if (res.r) {
     console.log('rounds:', res.r.round, 'score:', res.r.score, 'maxCombo:', res.r.maxCombo, 'speed:', res.r.speed);
     console.log('stats  :', JSON.stringify(res.r.stats));
   }

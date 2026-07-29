@@ -1,11 +1,11 @@
 /* =========================================================
-   セーノ!!  /  SE-NO
+   せーの!!  /  SE-NO
    1〜10人・各自スマホ・リアルタイム同期タップゲーム
    ========================================================= */
 
 /* ---------- 定数 ---------- */
 const VERSION = 'v1.0';
-const BUILD   = '2026-07-30 09:55';   // 更新したらここも変える（タイトル画面下に出る）
+const BUILD   = '2026-07-30 11:20';   // 更新したらここも変える（タイトル画面下に出る）
 const BROKERS = [
   { label: 'A',  url: 'wss://broker.emqx.io:8084/mqtt' },
   { label: 'B',  url: 'wss://broker.hivemq.com:8884/mqtt' },
@@ -26,10 +26,24 @@ const COLORS = [
 const MAX_PLAYERS = 10;
 const MIN_PLAYERS = 1;   // 動作確認用に1人でも開始できる
 
-/* モード：lv0 が大きいほど最初から速く・判定も厳しい */
-const MODES = {
-  normal: { key: 'normal', name: 'ふつう',   label: 'NORMAL', lv0: 0,  lives: 5, tutorial: 3 },
-  oni:    { key: 'oni',    name: '鬼モード', label: 'ONI',    lv0: 30, lives: 3, tutorial: 0 },
+/* あそびかた */
+const PLAYS = {
+  coop:   { key: 'coop',   name: '協力', label: 'CO-OP'  },
+  versus: { key: 'versus', name: '対戦', label: 'VERSUS' },
+};
+/* スピード：lv0 が大きいほど最初から速く・判定も厳しい */
+const SPEEDS = {
+  normal: { key: 'normal', name: 'ふつう', label: 'NORMAL', lv0: 0,  tutorial: 3, lives: 5 },
+  oni:    { key: 'oni',    name: '鬼',     label: 'ONI',    lv0: 30, tutorial: 0, lives: 3 },
+};
+/* 対戦のパラメータ（ここをいじれば手ざわりが変わる） */
+const VS = {
+  HP: 1500,          // 全員このHPから始まる
+  DMG_MAX: 300,      // 1回のダメージ上限
+  DMG_PER_MS: 2.5,   // 誤差1msの差につき何ダメージか（120msの差で上限に届く）
+  RAMP: 50,          // このラウンド数で威力が2倍になる（試合が延びすぎないように）
+  DEAD: 12,          // この差以下は互角（ダメージなし）
+  FAIL_ERR: 420,     // ミスした人の誤差はこの値として扱う
 };
 
 const WIN_BASE    = 200;  // 成功と認める最大ズレ(ms)：レベルが上がるほど狭くなる
@@ -85,15 +99,22 @@ const DIRS = [
 ];
 
 // 指示は seed とラウンド番号だけで決まる ＝ 通信なしで全端末が一致する
-function instructionOf(seed, i, nPlayers, tutorial) {
+function instructionOf(seed, i, nPlayers, tutorial, noSolo) {
   if (i < (tutorial || 0)) return { type: 'ALL_TAP' };
   const r = rngFor(seed, i);
   const roll = r();
+  if (noSolo) {
+    // 対戦では全員が同じ動きをして初めて比べられるので「あなただけ」は出さない
+    if (roll < 0.58) return { type: 'ALL_TAP' };
+    if (roll < 0.86) return { type: 'SWIPE', dir: DIRS[Math.floor(r() * 4)].key };
+    return { type: 'NO_TAP' };
+  }
   if (roll < 0.40) return { type: 'ALL_TAP' };
   if (roll < 0.65) return { type: 'SOLO_TAP', who: Math.floor(r() * nPlayers) };
   if (roll < 0.85) return { type: 'SWIPE', dir: DIRS[Math.floor(r() * 4)].key };
   return { type: 'NO_TAP' };
 }
+const insOf = (g, i) => instructionOf(g.seed, i, g.n, g.SP.tutorial, g.play === 'versus');
 const needsSwipe = (ins) => ins.type === 'SWIPE';
 
 /* ---------- 状態 ---------- */
@@ -104,7 +125,8 @@ const S = {
   connected: false,
   code: null,
   isHost: false,
-  mode: 'normal',
+  play: 'coop',
+  speed: 'normal',
   me: { id: 'st_' + uid(), name: '', idx: -1 },
   roster: [],
   presence: new Map(),
@@ -478,23 +500,50 @@ function renderLobby() {
   if (S.isHost) {
     btn.style.display = '';
     const allSynced = S.roster.every(p => p.id === S.me.id || (S.presence.get(p.id) || {}).synced);
-    btn.disabled = !(n >= MIN_PLAYERS && allSynced);
-    btn.textContent = n + '人で開始する';
-    btn.className = S.mode === 'oni' ? 'hot' : '';
-    $('#host-note').textContent = !allSynced ? '同期が終わるまで待ってください'
-      : (n === 1 ? '1人でも遊べます。あと' + (MAX_PLAYERS - n) + '人まで参加できます'
-                 : 'あと' + (MAX_PLAYERS - n) + '人まで参加できます');
+    const vs = S.play === 'versus';
+    let ok = allSynced, note = '';
+    if (!allSynced) note = '同期が終わるまで待ってください';
+    else if (vs && n < 2) { ok = false; note = '対戦は2人から。あと1人呼んでください'; }
+    else if (vs && n % 2 !== 0) { ok = false; note = '対戦は偶数人数で（いま' + n + '人）'; }
+    else if (vs) note = (n / 2) + '対' + (n / 2) + '。相手はランダムで決まります';
+    else note = n === 1 ? '1人でも遊べます。あと' + (MAX_PLAYERS - n) + '人まで参加できます'
+                        : 'あと' + (MAX_PLAYERS - n) + '人まで参加できます';
+    btn.disabled = !ok;
+    btn.textContent = vs ? (n >= 2 && n % 2 === 0 ? (n / 2) + '対' + (n / 2) + 'で開始' : '対戦で開始')
+                         : n + '人で開始する';
+    btn.className = (S.speed === 'oni' || vs) ? 'hot' : '';
+    $('#host-note').textContent = note;
   } else {
     btn.style.display = 'none';
     $('#host-note').textContent = 'ホストの開始を待っています…';
   }
 }
 
-function setMode(k) {
-  S.mode = k;
-  $('#mode-normal').classList.toggle('on', k === 'normal');
-  $('#mode-oni').classList.toggle('on', k === 'oni');
+function setPlay(k) {
+  S.play = k;
+  $('#play-coop').classList.toggle('on', k === 'coop');
+  $('#play-versus').classList.toggle('on', k === 'versus');
   if (S.screen === 'lobby') renderLobby();
+}
+function setSpeed(k) {
+  S.speed = k;
+  $('#speed-normal').classList.toggle('on', k === 'normal');
+  $('#speed-oni').classList.toggle('on', k === 'oni');
+  if (S.screen === 'lobby') renderLobby();
+}
+
+/* 対戦：チーム分けと「誰と誰が戦うか」を決める */
+function buildVersus(n) {
+  const idx = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; const t = idx[i]; idx[i] = idx[j]; idx[j] = t; }
+  const h = n / 2;
+  const team = new Array(n), rival = new Array(n);
+  for (let k = 0; k < h; k++) {
+    const a = idx[k], b = idx[k + h];
+    team[a] = 0; team[b] = 1;
+    rival[a] = b; rival[b] = a;
+  }
+  return { team, rival };
 }
 
 /* =========================================================
@@ -508,7 +557,7 @@ function onCtrl(m) {
     S.me.idx = me ? me.idx : -1;
     renderLobby();
   } else if (m.type === 'start') {
-    startGame(m.seed, m.startAt, m.roster, m.mode);
+    startGame(m.seed, m.startAt, m.roster, m.play, m.speed, m.vs);
   } else if (m.type === 'result') {
     applyResult(m);
   } else if (m.type === 'gameover') {
@@ -521,45 +570,92 @@ function onCtrl(m) {
 function hostStart() {
   const seed = (Math.random() * 0xffffffff) >>> 0;
   const startAt = now() + 1200;
-  const payload = { type: 'start', seed, startAt, roster: S.roster, mode: S.mode };
+  const n = S.roster.length;
+  const vs = S.play === 'versus' ? buildVersus(n) : null;
+  const payload = { type: 'start', seed, startAt, roster: S.roster,
+                    play: S.play, speed: S.speed, vs };
   pub('ctrl', payload);
-  startGame(seed, startAt, S.roster, S.mode);
+  startGame(seed, startAt, S.roster, S.play, S.speed, vs);
 }
 
-function startGame(seed, startAtHost, roster, modeKey) {
-  const M = MODES[modeKey] || MODES.normal;
+function startGame(seed, startAtHost, roster, playKey, speedKey, vsSetup) {
+  const PL = PLAYS[playKey] || PLAYS.coop;
+  const SP = SPEEDS[speedKey] || SPEEDS.normal;
   S.roster = roster || S.roster;
   const me = S.roster.find(p => p.id === S.me.id);
   S.me.idx = me ? me.idx : -1;
+  const n = S.roster.length;
 
-  // このモードでのラウンド目標時刻を作る
+  // このスピードでのラウンド目標時刻を作る
   const at = new Array(MAX_ROUNDS);
   let t = LEAD_IN;
-  for (let i = 0; i < MAX_ROUNDS; i++) { at[i] = t; t += intervalOf(M.lv0 + i); }
+  for (let i = 0; i < MAX_ROUNDS; i++) { at[i] = t; t += intervalOf(SP.lv0 + i); }
+
+  const versus = PL.key === 'versus' && vsSetup;
 
   S.game = {
-    seed, startAtHost, M, at,
-    lv: (i) => M.lv0 + i,
-    n: S.roster.length,
-    lives: M.lives, combo: 0, maxCombo: 0, score: 0,
+    seed, startAtHost, at, PL, SP, play: PL.key,
+    lv: (i) => SP.lv0 + i,
+    n,
+    lives: SP.lives, combo: 0, maxCombo: 0, score: 0,
     round: 0, over: false, armed: -1,
     localVerdict: {}, inbox: {}, judged: -1, stats: {},
+    // 対戦用
+    team: versus ? vsSetup.team.slice() : null,
+    rival: versus ? vsSetup.rival.slice() : null,
+    hp: versus ? new Array(n).fill(VS.HP) : null,
+    out: versus ? new Array(n).fill(false) : null,
+    dealt: versus ? new Array(n).fill(0) : null,
+    taken: versus ? new Array(n).fill(0) : null,
   };
-  // ひとりずつの PERFECT / GOOD / ミス の回数
   S.roster.forEach(p => { S.game.stats[p.id] = { p: 0, g: 0, m: 0 }; });
 
   lastRenderRound = -1; tickedFor = -1;
   initAudio(); calibrateAudio();
   requestWakeLock();
 
-  $('#play-root').style.setProperty('--me', COLORS[Math.max(0, S.me.idx) % COLORS.length].hex);
+  const myColor = COLORS[Math.max(0, S.me.idx) % COLORS.length].hex;
+  $('#play-root').style.setProperty('--me', myColor);
   $('#play-root').classList.remove('fever');
-  $('#hud-mode').textContent = M.label;
+  $('#hud-mode').textContent = versus
+    ? PL.label + (SP.key === 'oni' ? ' · 鬼' : '')
+    : SP.label;
   $('#combo').classList.add('hidden');
   $('#verdict').className = '';
   $('#gain').className = '';
+
+  // 画面の出し分け
+  const isVs = !!versus;
+  $('#vs-hud').style.display = isVs ? '' : 'none';
+  $('#hud-lives').style.display = isVs ? 'none' : '';
+  $('#hud-score-label').textContent = isVs ? 'HP' : 'SCORE';
+  if (isVs) renderVsHud();
+
   show('play');
   loop();
+}
+
+/* 対戦：自分と相手のHPバー */
+function renderVsHud() {
+  const g = S.game;
+  if (!g || !g.hp) return;
+  const me = Math.max(0, S.me.idx);
+  const op = g.rival[me];
+  const set = (sel, idx) => {
+    const el = $(sel);
+    if (idx == null || idx < 0) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    const c = COLORS[idx % COLORS.length];
+    const p = S.roster[idx] || {};
+    el.style.setProperty('--c', c.hex);
+    el.querySelector('.vsn').textContent = (idx === me ? 'あなた' : (p.name || '?'));
+    el.querySelector('.vshp').textContent = Math.max(0, g.hp[idx]);
+    el.querySelector('.vsbar i').style.width = clamp(g.hp[idx] / VS.HP * 100, 0, 100) + '%';
+    el.classList.toggle('ko', g.out[idx]);
+  };
+  set('#vs-me', me);
+  set('#vs-op', op);
+  $('#vs-mid').textContent = op == null ? '—' : 'VS';
 }
 
 function pendingRound(tHost) {
@@ -583,7 +679,7 @@ function loop() {
     const remain = target - rel;
     const prog = clamp(1 - remain / (target - prev), 0, 1);
 
-    const ins = instructionOf(g.seed, cur, g.n, g.M.tutorial);
+    const ins = insOf(g, cur);
     if (g.armed !== cur) { g.armed = cur; armInput(ins); scheduleTick(cur, target); }
 
     renderPlay(cur, ins, prog, remain);
@@ -618,7 +714,7 @@ function fireAction(act, dir, tLocal) {
   const tH = toHost(tLocal);
   const delta = tH - (g.startAtHost + g.at[round]);
   const W = WIN_OF(g.lv(round), g.n);
-  const ins = instructionOf(g.seed, round, g.n, g.M.tutorial);
+  const ins = insOf(g, round);
 
   let label = '', cls = '';
   const forbidden = ins.type === 'NO_TAP' || (ins.type === 'SOLO_TAP' && ins.who !== S.me.idx);
@@ -692,8 +788,9 @@ function hostJudgeTick(rel) {
 }
 
 function judgeRound(r) {
+  if (S.game.play === 'versus') return judgeVersus(r);
   const g = S.game;
-  const ins = instructionOf(g.seed, r, g.n, g.M.tutorial);
+  const ins = insOf(g, r);
   const items = g.inbox[r] || [];
   const target = g.startAtHost + g.at[r];
   const W = WIN_OF(g.lv(r), g.n);
@@ -750,7 +847,7 @@ function judgeRound(r) {
     g.combo++; g.maxCombo = Math.max(g.maxCombo, g.combo);
     const mul = tier === 'perfect' ? 3 : tier === 'good' ? 2 : 1;
     gain = (100 + 50 * Math.min(g.combo, 20)) * mul;
-    if (g.M.key === 'oni') gain = Math.round(gain * 1.5);
+    if (g.SP.key === 'oni') gain = Math.round(gain * 1.5);
     g.score += gain;
   } else {
     g.combo = 0; g.lives--;
@@ -763,7 +860,111 @@ function judgeRound(r) {
 
   if (g.lives <= 0 && !g.over) {
     const over = { type: 'gameover', round: r + 1, score: g.score, maxCombo: g.maxCombo,
-                   speed: SPEED_OF(g.lv(r)), stats: g.stats, roster: S.roster, mode: g.M.key };
+                   speed: SPEED_OF(g.lv(r)), stats: g.stats, roster: S.roster,
+                   play: 'coop', speed_key: g.SP.key };
+    pub('ctrl', over);
+    endGame(over);
+  }
+}
+
+/* =========================================================
+   対戦：ペアごとに誤差を比べて、負けたほうがダメージを受ける
+   ========================================================= */
+function errorOf(a, ins, myIdx) {
+  // 返り値：{ err(ms), failed }  失敗は FAIL_ERR 扱い
+  const mustAct = ins.type === 'ALL_TAP' ? 'tap' : ins.type === 'SWIPE' ? 'swipe' : 'none';
+  if (mustAct === 'none') {
+    // 「さわるな」：触らなければ完璧、触ったら失敗
+    return a ? { err: VS.FAIL_ERR, failed: true } : { err: 0, failed: false };
+  }
+  if (!a) return { err: VS.FAIL_ERR, failed: true };
+  const right = a.act === mustAct && (mustAct !== 'swipe' || a.dir === ins.dir);
+  if (!right) return { err: VS.FAIL_ERR, failed: true };
+  const e = Math.abs(a.d);
+  if (e >= VS.FAIL_ERR) return { err: VS.FAIL_ERR, failed: true };
+  return { err: e, failed: false };
+}
+
+function reassignRivals(g) {
+  for (let i = 0; i < g.n; i++) {
+    if (g.out[i]) { g.rival[i] = null; continue; }
+    if (g.rival[i] == null || g.out[g.rival[i]]) {
+      const foes = [];
+      for (let j = 0; j < g.n; j++) if (!g.out[j] && g.team[j] !== g.team[i]) foes.push(j);
+      g.rival[i] = foes.length ? foes[i % foes.length] : null;
+    }
+  }
+}
+
+function judgeVersus(r) {
+  const g = S.game;
+  const ins = insOf(g, r);
+  const items = g.inbox[r] || [];
+  const target = g.startAtHost + g.at[r];
+  const W = WIN_OF(g.lv(r), g.n);
+
+  // 各プレイヤーの「もっとも目標に近い操作」を拾う
+  const best = {};
+  items.forEach(it => {
+    const d = it.t - target;
+    if (d < -GUARD_PRE || d > VS.FAIL_ERR) return;
+    const cur = best[it.id];
+    if (!cur || Math.abs(d) < Math.abs(cur.d)) best[it.id] = { d, act: it.act, dir: it.dir };
+  });
+
+  const err = new Array(g.n).fill(VS.FAIL_ERR);
+  const failed = new Array(g.n).fill(true);
+  S.roster.forEach(p => {
+    const e = errorOf(best[p.id] || null, ins, p.idx);
+    err[p.idx] = Math.round(e.err);
+    failed[p.idx] = e.failed;
+    // 成績表用のバケツも一応ためておく
+    const bucket = e.failed ? 'm' : (e.err <= W * 0.33 ? 'p' : 'g');
+    if (g.stats[p.id]) g.stats[p.id][bucket]++;
+  });
+
+  // ペアごとに勝負
+  const hits = [];
+  for (let i = 0; i < g.n; i++) {
+    const j = g.rival[i];
+    if (j == null || j < i) continue;      // 1組を1回だけ処理
+    if (g.out[i] || g.out[j]) continue;
+    if (failed[i] && failed[j]) continue;  // 二人とも失敗なら痛み分け
+    const diff = Math.abs(err[i] - err[j]);
+    if (diff <= VS.DEAD) continue;         // ほぼ互角
+    const win = err[i] < err[j] ? i : j;
+    const lose = win === i ? j : i;
+    const mul = 1 + Math.min(1, r / VS.RAMP);   // 終盤ほど1発が重くなる
+    const dmg = clamp(Math.round(diff * VS.DMG_PER_MS * mul), 0, VS.DMG_MAX);
+    if (dmg <= 0) continue;
+    g.hp[lose] = Math.max(0, g.hp[lose] - dmg);
+    g.dealt[win] += dmg;
+    g.taken[lose] += dmg;
+    hits.push({ from: win, to: lose, dmg });
+  }
+
+  // ノックアウト判定と相手の組み替え
+  for (let i = 0; i < g.n; i++) if (!g.out[i] && g.hp[i] <= 0) g.out[i] = true;
+  reassignRivals(g);
+
+  const alive = [0, 0];
+  for (let i = 0; i < g.n; i++) if (!g.out[i]) alive[g.team[i]]++;
+
+  const payload = {
+    type: 'result', vs: true, round: r, ins: ins.type,
+    err, failed, hits, hp: g.hp.slice(), out: g.out.slice(), rival: g.rival.slice(),
+  };
+  pub('ctrl', payload);
+  applyResult(payload);
+
+  if ((alive[0] === 0 || alive[1] === 0) && !g.over) {
+    const winner = alive[0] === 0 && alive[1] === 0 ? -1 : (alive[0] > 0 ? 0 : 1);
+    const over = {
+      type: 'gameover', vs: true, round: r + 1, speed: SPEED_OF(g.lv(r)),
+      winner, team: g.team.slice(), hp: g.hp.slice(),
+      dealt: g.dealt.slice(), taken: g.taken.slice(),
+      roster: S.roster, play: 'versus', speed_key: g.SP.key,
+    };
     pub('ctrl', over);
     endGame(over);
   }
@@ -855,6 +1056,7 @@ function failEffect() {
 
 function applyResult(m) {
   if (!S.game) return;
+  if (m.vs) return applyVersusResult(m);
   const g = S.game;
   const prevScore = g.score;
   g.lives = m.lives; g.combo = m.combo; g.score = m.score;
@@ -873,6 +1075,37 @@ function applyResult(m) {
   sc.classList.remove('bump'); void sc.offsetWidth; sc.classList.add('bump');
 }
 
+/* 対戦：1ラウンドぶんの結果を自分視点で見せる */
+function applyVersusResult(m) {
+  const g = S.game;
+  g.hp = m.hp.slice(); g.out = m.out.slice(); g.rival = m.rival.slice();
+
+  const me = Math.max(0, S.me.idx);
+  const hit = m.hits.find(h => h.from === me || h.to === me);
+  const gainEl = $('#gain');
+  gainEl.className = '';
+  void gainEl.offsetWidth;
+
+  if (hit && hit.from === me) {
+    gainEl.textContent = hit.dmg + ' ダメージ';
+    gainEl.className = 'show dealt';
+    celebrate(hit.dmg >= VS.DMG_MAX * 0.66 ? 'perfect' : 'good', 0, 0);
+    fxBurst(FX.w * 0.78, FX.h * 0.16, { n: 26, speed: [200, 700], life: [0.35, 0.8], size: [2, 5],
+      colors: PAL.perfect, shapes: ['spark', 'star'], g: 700 });
+  } else if (hit && hit.to === me) {
+    gainEl.textContent = '− ' + hit.dmg;
+    gainEl.className = 'show taken';
+    failEffect();
+  } else {
+    gainEl.textContent = '互角';
+    gainEl.className = 'show even';
+    flash('ok'); sndOk(); buzz(10);
+  }
+
+  if (g.out[me] && !g.koShown) { g.koShown = true; toast('あなたは倒れました。仲間を見守りましょう'); }
+  renderVsHud();
+}
+
 /* ---------- プレイ画面の描画 ---------- */
 let lastRenderRound = -1;
 function renderPlay(round, ins, prog, remain) {
@@ -883,7 +1116,7 @@ function renderPlay(round, ins, prog, remain) {
     lastRenderRound = round;
     const box = $('#instr');
     let main = '', sub = '', cls = '';
-    const all = g.n + '人いっせいに';
+    const all = g.play === 'versus' ? 'いっせいに（相手より正確に）' : g.n + '人いっせいに';
     if (ins.type === 'ALL_TAP')      { main = 'タップ';   sub = all; cls = 'i-all'; }
     else if (ins.type === 'NO_TAP')  { main = 'さわるな'; sub = '手を離して待つ'; cls = 'i-no'; }
     else if (ins.type === 'SWIPE')   {
@@ -913,10 +1146,15 @@ function renderPlay(round, ins, prog, remain) {
   if (round === 0 && remain > 0) { cd.style.display = ''; cd.textContent = String(Math.ceil(remain / 800)); }
   else cd.style.display = 'none';
 
-  let hearts = '';
-  for (let i = 0; i < g.M.lives; i++) hearts += '<span class="' + (i < g.lives ? 'on' : 'off') + '">♥</span>';
-  $('#hud-lives').innerHTML = hearts;
-  $('#hud-score').textContent = g.score.toLocaleString();
+  if (g.play === 'versus') {
+    const me = Math.max(0, S.me.idx);
+    $('#hud-score').textContent = Math.max(0, g.hp[me]);
+  } else {
+    let hearts = '';
+    for (let i = 0; i < g.SP.lives; i++) hearts += '<span class="' + (i < g.lives ? 'on' : 'off') + '">♥</span>';
+    $('#hud-lives').innerHTML = hearts;
+    $('#hud-score').textContent = g.score.toLocaleString();
+  }
   $('#hud-round').textContent = 'R' + (round + 1);
   $('#hud-speed').textContent = 'SPEED ' + SPEED_OF(g.lv(round));
 }
@@ -1001,40 +1239,127 @@ function endGame(m) {
   releaseWakeLock();
   S.lastResult = m;
   show('result');
+  $('#vs-hud').style.display = 'none';
 
-  const rank = rankOf(m.round, m.mode);
+  if (m.vs) return endVersus(m);
+
+  const rank = rankOf(m.round, m.speed_key || 'normal');
   $('#r-rank').textContent = rank;
-  $('#r-mode').textContent = (MODES[m.mode] || MODES.normal).label;
+  $('#r-rank').className = '';
+  $('#r-mode').textContent = 'CO-OP · ' + (SPEEDS[m.speed_key] || SPEEDS.normal).label;
   $('#r-round').textContent = m.round;
   $('#r-combo').textContent = m.maxCombo;
   $('#r-speed').textContent = m.speed;
+  $('#rl-1').textContent = 'SCORE';
+  $('#rl-2').textContent = 'ROUNDS';
+  $('#rl-3').textContent = 'MAX COMBO';
+  $('#rl-4').textContent = 'FINAL SPEED';
+  $('#sb-h1').textContent = 'PERFECT';
+  $('#sb-h2').textContent = 'GOOD';
+  $('#sb-h3').textContent = 'MISS';
 
-  // スコアはカウントアップ
-  const el = $('#r-score');
-  const target = m.score, t0 = now();
-  const dur = 900;
-  const tickUp = () => {
-    const k = clamp((now() - t0) / dur, 0, 1);
-    el.textContent = Math.round(target * (1 - Math.pow(1 - k, 3))).toLocaleString();
-    if (k < 1) requestAnimationFrame(tickUp);
-  };
-  tickUp();
-
+  countUp($('#r-score'), m.score);
   renderScoreboard(m);
 
-  // ランクが高いほど派手に祝う
   const big = rank === 'S+' || rank === 'S' || rank === 'A';
-  setTimeout(() => {
-    if (big) {
-      fxBurst(FX.w / 2, FX.h + 20, { n: 90, ang: -Math.PI / 2, spread: 1.0, speed: [750, 1600],
-        life: [1.1, 2], size: [3, 8], colors: PAL.perfect.concat(PAL.good), shapes: ['conf', 'star'], g: 900, drag: 0.996 });
-      fxRing(FX.w / 2, FX.h * 0.3, '#f4ff2b', Math.max(FX.w, FX.h) * 0.7, 12, 0.9);
-      sndPerfect();
-    } else {
-      fxBurst(FX.w / 2, FX.h * 0.3, { n: 24, speed: [200, 600], life: [0.5, 1], size: [2, 5],
-        colors: PAL.ok, shapes: ['spark', 'dot'], g: 800 });
-    }
-  }, 220);
+  setTimeout(() => finale(big), 220);
+}
+
+function countUp(el, target) {
+  const t0 = now(), dur = 900;
+  const tick = () => {
+    const k = clamp((now() - t0) / dur, 0, 1);
+    el.textContent = Math.round(target * (1 - Math.pow(1 - k, 3))).toLocaleString();
+    if (k < 1) requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+function finale(big) {
+  if (big) {
+    fxBurst(FX.w / 2, FX.h + 20, { n: 90, ang: -Math.PI / 2, spread: 1.0, speed: [750, 1600],
+      life: [1.1, 2], size: [3, 8], colors: PAL.perfect.concat(PAL.good), shapes: ['conf', 'star'], g: 900, drag: 0.996 });
+    fxRing(FX.w / 2, FX.h * 0.3, '#f4ff2b', Math.max(FX.w, FX.h) * 0.7, 12, 0.9);
+    sndPerfect();
+  } else {
+    fxBurst(FX.w / 2, FX.h * 0.3, { n: 24, speed: [200, 600], life: [0.5, 1], size: [2, 5],
+      colors: PAL.ok, shapes: ['spark', 'dot'], g: 800 });
+  }
+}
+
+/* 対戦の結果画面 */
+const VS_ROASTS = [
+  (n, d) => n + '、' + d + 'ダメージも殴られて何してたの？',
+  (n, d) => n + '、サンドバッグとしては優秀だった。',
+  (n, d) => n + '、次は見学席から声援だけ送って。',
+  (n, d) => n + 'の指、完全に他人のものだったね。',
+  (n, d) => n + '、' + d + 'ダメージ。もはや献血。',
+  (n, d) => n + '、相手が上手いんじゃない。あなたが遅い。',
+  (n, d) => n + '、心の準備をしてる間に試合が終わってる。',
+  (n, d) => n + '、今日はタイミングと和解できなかったね。',
+];
+
+function endVersus(m) {
+  const me = Math.max(0, S.me.idx);
+  const myTeam = m.team[me];
+  const win = m.winner === myTeam;
+  const draw = m.winner < 0;
+
+  const rankEl = $('#r-rank');
+  rankEl.textContent = draw ? 'DRAW' : (win ? 'WIN' : 'LOSE');
+  rankEl.className = draw ? 'r-draw' : (win ? 'r-win' : 'r-lose');
+  $('#r-mode').textContent = 'VERSUS · ' + (SPEEDS[m.speed_key] || SPEEDS.normal).label;
+
+  $('#rl-1').textContent = '与えたダメージ';
+  $('#rl-2').textContent = '受けたダメージ';
+  $('#rl-3').textContent = 'ROUNDS';
+  $('#rl-4').textContent = 'FINAL SPEED';
+  $('#r-round').textContent = m.taken[me];
+  $('#r-combo').textContent = m.round;
+  $('#r-speed').textContent = m.speed;
+  countUp($('#r-score'), m.dealt[me]);
+
+  $('#sb-h1').textContent = '与ダメ';
+  $('#sb-h2').textContent = '残りHP';
+  $('#sb-h3').textContent = '被ダメ';
+
+  const roster = m.roster || S.roster;
+  const rows = roster.map(p => ({
+    p, team: m.team[p.idx], dealt: m.dealt[p.idx], taken: m.taken[p.idx], hp: Math.max(0, m.hp[p.idx]),
+  }));
+  const ranked = rows.slice().sort((a, b) => b.dealt - a.dealt || a.taken - b.taken);
+  const mvp = ranked.length >= 2 ? ranked[0] : null;
+  const worst = ranked.length >= 2 ? ranked.slice().sort((a, b) => b.taken - a.taken)[0] : null;
+
+  const wrap = $('#r-acc');
+  wrap.innerHTML = '';
+  ranked.forEach(row => {
+    const c = COLORS[row.p.idx % COLORS.length] || COLORS[0];
+    const el = document.createElement('div');
+    el.className = 'sbrow' + (mvp && row === mvp ? ' is-mvp' : '') +
+                   (worst && row === worst ? ' is-worst' : '') + (row.hp <= 0 ? ' is-ko' : '');
+    el.style.setProperty('--c', c.hex);
+    el.innerHTML =
+      '<div class="sbname"><i></i>' + escapeHtml(row.p.name) +
+        '<span class="teamtag t' + row.team + '">' + (row.team === 0 ? 'A' : 'B') + '</span>' +
+        (mvp && row === mvp ? '<span class="badge mvp">MVP</span>' : '') + '</div>' +
+      '<div class="sbn np">' + row.dealt + '</div>' +
+      '<div class="sbn ng">' + row.hp + '</div>' +
+      '<div class="sbn nm">' + row.taken + '</div>';
+    wrap.appendChild(el);
+  });
+
+  $('#r-mvp').textContent = mvp
+    ? 'MVP は ' + mvp.p.name + '。' + mvp.dealt + 'ダメージを叩き込んだ。'
+    : '';
+  const roastEl = $('#r-roast');
+  if (worst && worst !== mvp && worst.taken > 0) {
+    roastEl.style.display = '';
+    const i = (m.round * 5 + worst.taken) % VS_ROASTS.length;
+    roastEl.textContent = '「' + VS_ROASTS[i](worst.p.name, worst.taken) + '」';
+  } else roastEl.style.display = 'none';
+
+  setTimeout(() => finale(win), 220);
 }
 
 /* ---------- ルーム退出 ---------- */
@@ -1117,8 +1442,10 @@ function boot() {
     S.game = null; lastRenderRound = -1; tickedFor = -1;
     show('lobby'); renderLobby();
   });
-  $('#mode-normal').addEventListener('click', () => setMode('normal'));
-  $('#mode-oni').addEventListener('click', () => setMode('oni'));
+  $('#play-coop').addEventListener('click', () => setPlay('coop'));
+  $('#play-versus').addEventListener('click', () => setPlay('versus'));
+  $('#speed-normal').addEventListener('click', () => setSpeed('normal'));
+  $('#speed-oni').addEventListener('click', () => setSpeed('oni'));
   $('#btn-copy').addEventListener('click', async () => {
     const url = location.origin + location.pathname + '?code=' + S.code;
     try { await navigator.clipboard.writeText(url); toast('参加URLをコピーしました'); }
@@ -1175,5 +1502,5 @@ document.addEventListener('visibilitychange', () => {
   resetSync();
 });
 
-window.__SYNCTAP = { S, instructionOf, toHost, toLocal, now, COLORS, MODES,
+window.__SYNCTAP = { S, instructionOf, insOf, toHost, toLocal, now, COLORS, PLAYS, SPEEDS, VS,
                      celebrate, showVerdict, failEffect };

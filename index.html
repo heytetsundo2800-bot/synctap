@@ -7,12 +7,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="セーノ!!">
+<meta name="apple-mobile-web-app-title" content="せーの!!">
 <meta name="description" content="1人から10人まで。同じ部屋でいっせーので合わせるパーティゲーム">
 <link rel="manifest" href="./manifest.webmanifest?v=2">
 <link rel="apple-touch-icon" href="./icons/apple-touch-icon-v2.png">
 <link rel="icon" href="./icons/favicon-v2.png">
-<title>セーノ!! — みんなでいっせーの</title>
+<title>せーの!! — みんなでいっせーの</title>
 <style>
 :root{
   --bg:#0b0610; --panel:#180d1c; --line:#3a1e42; --fg:#fff3fa; --dim:#a487ad;
@@ -194,12 +194,36 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
 @keyframes fev{0%,100%{opacity:.4}50%{opacity:1}}
 .hint{padding:8px 16px calc(var(--safe-b) + 16px);text-align:center;font-size:10.5px;color:#5a3d63}
 
+/* 対戦：HPバー */
+#vs-hud{display:grid;grid-template-columns:1fr 36px 1fr;align-items:end;gap:8px;padding:12px 20px 0}
+.vsn{font-size:10.5px;color:var(--dim);font-weight:800;margin-bottom:5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vsbar{height:13px;border-radius:999px;background:#2a1531;overflow:hidden}
+.vsbar i{display:block;height:100%;width:100%;background:var(--c);border-radius:999px;
+  transition:width .4s cubic-bezier(.2,1,.3,1)}
+.vshp{font-size:16px;font-weight:900;font-variant-numeric:tabular-nums;margin-top:4px;color:var(--c)}
+#vs-op{text-align:right}
+#vs-mid{text-align:center;font-size:11px;font-weight:900;color:var(--brand);font-style:italic;padding-bottom:14px}
+.vsside.ko{opacity:.32}
+#gain.dealt{color:var(--accent)}
+#gain.taken{color:var(--ng)}
+#gain.even{color:var(--dim);font-size:clamp(17px,5vw,25px)}
+.mode.vs.on{border-color:var(--brand);background:#2a0a1a}
+.mode.vs.on b{color:#ff6f9e}
+
 /* ---------- 結果 ---------- */
 .rank{text-align:center;margin:4px 0 8px}
 .rank b{font-size:clamp(78px,26vw,132px);font-weight:900;line-height:1;font-style:italic;display:block;
   color:var(--accent);animation:rankIn .7s cubic-bezier(.15,1.5,.3,1)}
 @keyframes rankIn{0%{transform:scale(.3) rotate(-14deg);opacity:0}100%{transform:scale(1) rotate(0);opacity:1}}
 .rank span{font-size:10.5px;letter-spacing:.36em;color:var(--dim)}
+.rank b.r-win{color:var(--accent)}
+.rank b.r-lose{color:var(--ng)}
+.rank b.r-draw{color:var(--dim)}
+.teamtag{font-size:9px;font-weight:900;padding:2px 6px;border-radius:5px;margin-left:7px;flex:0 0 auto}
+.teamtag.t0{background:#4a1230;color:#ffb3d4}
+.teamtag.t1{background:#16283f;color:#a8d8ff}
+.sbrow.is-ko{opacity:.5}
 .rgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
 .rcell{background:var(--panel);border:1.5px solid var(--line);border-radius:15px;padding:15px;text-align:center}
 .rcell b{display:block;font-size:29px;font-weight:900;font-variant-numeric:tabular-nums}
@@ -244,7 +268,7 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
         </g>
       </svg>
       <div class="kicker">SE-NO</div>
-      <h1>セーノ<em><i>!</i><i>!</i></em></h1>
+      <h1>せーの<em><i>!</i><i>!</i></em></h1>
       <p class="tag">みんなで、いっせーの。</p>
       <p class="tag" style="margin-top:6px;font-size:11.5px;color:var(--brand);font-weight:800">1人から10人までプレイ可能</p>
     </div>
@@ -307,10 +331,15 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
     <div id="player-list"></div>
 
     <div id="mode-block">
-      <div class="sect">モード</div>
+      <div class="sect">あそびかた</div>
       <div class="modes">
-        <div class="mode on" id="mode-normal"><b>ふつう</b><span>ゆっくり始まって<br>だんだん速くなる</span></div>
-        <div class="mode oni" id="mode-oni"><b>鬼モード</b><span>最初から高速<br>ライフ3・判定も厳しい</span></div>
+        <div class="mode on" id="play-coop"><b>協力</b><span>全員で息を合わせる<br>ミスでライフが減る</span></div>
+        <div class="mode vs" id="play-versus"><b>対戦</b><span>2チームに分かれて<br>1対1で削り合う</span></div>
+      </div>
+      <div class="sect">スピード</div>
+      <div class="modes">
+        <div class="mode on" id="speed-normal"><b>ふつう</b><span>ゆっくり始まって<br>だんだん速くなる</span></div>
+        <div class="mode oni" id="speed-oni"><b>鬼</b><span>最初から高速<br>判定も厳しい</span></div>
       </div>
     </div>
 
@@ -330,12 +359,18 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
     <div id="hud">
       <div id="hud-left">
         <div id="hud-score">0</div>
-        <div id="hud-meta"><span id="hud-round">R1</span> · <span id="hud-speed">SPEED 30</span></div>
+        <div id="hud-meta"><span id="hud-score-label">SCORE</span> · <span id="hud-round">R1</span> · <span id="hud-speed">SPEED 30</span></div>
       </div>
       <div id="hud-right">
         <div id="hud-lives"></div>
         <div id="hud-mode"></div>
       </div>
+    </div>
+
+    <div id="vs-hud" style="display:none">
+      <div class="vsside" id="vs-me"><div class="vsn">あなた</div><div class="vsbar"><i></i></div><div class="vshp">1500</div></div>
+      <div id="vs-mid">VS</div>
+      <div class="vsside" id="vs-op"><div class="vsn">—</div><div class="vsbar"><i></i></div><div class="vshp">1500</div></div>
     </div>
 
     <div id="pad">
@@ -373,10 +408,10 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
     <div class="rank"><b id="r-rank">A</b><span id="r-mode">NORMAL</span></div>
 
     <div class="rgrid">
-      <div class="rcell"><b id="r-score">0</b><span>SCORE</span></div>
-      <div class="rcell"><b id="r-round">0</b><span>ROUNDS</span></div>
-      <div class="rcell"><b id="r-combo">0</b><span>MAX COMBO</span></div>
-      <div class="rcell"><b id="r-speed">0</b><span>FINAL SPEED</span></div>
+      <div class="rcell"><b id="r-score">0</b><span id="rl-1">SCORE</span></div>
+      <div class="rcell"><b id="r-round">0</b><span id="rl-2">ROUNDS</span></div>
+      <div class="rcell"><b id="r-combo">0</b><span id="rl-3">MAX COMBO</span></div>
+      <div class="rcell"><b id="r-speed">0</b><span id="rl-4">FINAL SPEED</span></div>
     </div>
 
     <div id="r-mvp"></div>
@@ -385,7 +420,7 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
     <div class="sect">ひとりずつの成績</div>
     <div class="sbhead">
       <span>プレイヤー</span>
-      <b class="np">PERFECT</b><b class="ng">GOOD</b><b class="nm">MISS</b>
+      <b class="np" id="sb-h1">PERFECT</b><b class="ng" id="sb-h2">GOOD</b><b class="nm" id="sb-h3">MISS</b>
     </div>
     <div id="r-acc"></div>
 
