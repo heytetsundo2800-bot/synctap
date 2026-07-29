@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no,maximum-scale=1">
+<meta name="theme-color" content="#0b0d17">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="シンクロタップ">
+<meta name="description" content="3人が同じ部屋で、いっせーので合わせるパーティゲーム">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="icon" href="./icons/favicon.png">
+<title>シンクロ・タップ</title>
+<style>
+:root{
+  --bg:#0b0d17; --bg2:#151931; --fg:#f4f6ff; --dim:#8b93b8;
+  --ok:#39d98a; --warn:#ffb020; --ng:#ff4d6d;
+  --me:#4dabff;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+  overscroll-behavior:none; user-select:none; -webkit-user-select:none;
+  touch-action:manipulation;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+.screen{display:none;height:100dvh;flex-direction:column}
+.screen.on{display:flex}
+
+/* ---- 共通パーツ ---- */
+.wrap{max-width:520px;margin:0 auto;width:100%;padding:22px;flex:1;display:flex;flex-direction:column}
+h1{font-size:34px;letter-spacing:.06em;margin:0 0 2px;font-weight:900}
+h1 small{display:block;font-size:12px;letter-spacing:.34em;color:var(--dim);font-weight:600;margin-bottom:8px}
+.lead{color:var(--dim);font-size:13.5px;line-height:1.75;margin:0 0 22px}
+label{display:block;font-size:12px;color:var(--dim);margin:16px 0 6px;letter-spacing:.06em}
+input,select{
+  width:100%;padding:15px 16px;font-size:17px;border-radius:14px;
+  border:1px solid #2b3157;background:#10142a;color:var(--fg);outline:none;
+  font-family:inherit;
+}
+input:focus,select:focus{border-color:var(--me)}
+button{
+  width:100%;padding:17px;font-size:17px;font-weight:800;border-radius:14px;border:0;
+  background:var(--me);color:#04101f;margin-top:12px;font-family:inherit;cursor:pointer;
+  letter-spacing:.04em;
+}
+button.ghost{background:#1b2142;color:var(--fg);border:1px solid #2b3157}
+button:disabled{opacity:.35}
+.row{display:flex;gap:10px}
+.row>*{flex:1}
+.netstat{font-size:11.5px;letter-spacing:.05em;padding:7px 12px;border-radius:999px;display:inline-block;background:#1b2142;color:var(--dim)}
+.netstat.ok{color:var(--ok)}.netstat.ng{color:var(--ng)}.netstat.wait{color:var(--warn)}
+.spacer{flex:1}
+.foot{font-size:11px;color:#5b628a;text-align:center;padding-top:14px;line-height:1.7}
+
+/* ---- ロビー ---- */
+.codebox{background:#10142a;border:1px solid #2b3157;border-radius:18px;padding:18px;text-align:center;margin-bottom:14px}
+.codebox .lbl{font-size:11px;color:var(--dim);letter-spacing:.22em}
+.codebox .code{font-size:52px;font-weight:900;letter-spacing:.22em;line-height:1.15;font-variant-numeric:tabular-nums}
+.syncq{font-size:12px;text-align:center;padding:9px;border-radius:12px;background:#10142a;margin-bottom:14px;letter-spacing:.04em}
+.syncq.ok{color:var(--ok)}.syncq.warn{color:var(--warn)}.syncq.ng{color:var(--ng)}.syncq.wait{color:var(--dim)}
+#player-list{display:flex;flex-direction:column;gap:9px}
+.pcard{display:grid;grid-template-columns:16px 1fr auto;align-items:center;gap:12px;
+  padding:15px 16px;border-radius:14px;background:#10142a;border:1px solid #232847}
+.pcard .pdot{width:14px;height:14px;border-radius:50%;background:var(--c);box-shadow:0 0 16px var(--c)}
+.pcard .pname{font-weight:800;font-size:16px}
+.pcard .pmeta{font-size:11px;color:var(--dim);text-align:right;letter-spacing:.04em}
+.pcard.empty{opacity:.32}
+.pcard.empty .pdot{background:#39406b;box-shadow:none}
+.pcard.me{border-color:var(--c)}
+.youtag{font-size:10px;background:#2b3157;padding:3px 7px;border-radius:6px;margin-left:8px;vertical-align:2px;color:var(--dim)}
+#host-note{font-size:11.5px;color:var(--dim);text-align:center;margin-top:10px}
+
+/* ---- プレイ ---- */
+#play-root{position:relative;height:100dvh;display:flex;flex-direction:column;overflow:hidden;touch-action:none}
+#hud{display:flex;align-items:center;gap:12px;padding:12px 16px;font-size:12px;color:var(--dim);letter-spacing:.06em}
+#hud-lives{color:var(--ng);font-size:16px;letter-spacing:.14em}
+#hud-score{margin-left:auto;font-weight:900;color:var(--fg);font-size:16px;font-variant-numeric:tabular-nums}
+#pad{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;touch-action:none}
+.instr{text-align:center;z-index:3;pointer-events:none}
+#instr-main{font-size:clamp(46px,15vw,86px);font-weight:900;line-height:1.02;letter-spacing:.02em}
+#instr-sub{font-size:13.5px;color:var(--dim);margin-top:10px;letter-spacing:.06em}
+.i-all #instr-main{color:#fff}
+.i-no #instr-main,.i-solo-other #instr-main{color:var(--ng)}
+.i-swipe #instr-main{color:var(--warn);font-size:clamp(70px,24vw,140px)}
+.i-solo-me #instr-main{color:var(--ok)}
+#ring-wrap{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:1;pointer-events:none}
+#ring-wrap svg{width:min(78vw,330px);height:min(78vw,330px);transform:rotate(-90deg)}
+#ring-bg{fill:none;stroke:#1c2242;stroke-width:3}
+#ring-fg{fill:none;stroke:var(--me);stroke-width:5;stroke-linecap:round;transition:stroke .12s}
+#ring-wrap.near #ring-fg{stroke:#fff}
+#countdown{position:absolute;font-size:120px;font-weight:900;opacity:.14;z-index:0}
+#verdict{position:absolute;bottom:12%;font-size:19px;font-weight:900;letter-spacing:.08em;z-index:4;pointer-events:none}
+#verdict.perfect{color:#ffd23f}#verdict.good{color:var(--ok)}#verdict.ok{color:#6ec6ff}#verdict.bad{color:var(--ng)}
+#hud-combo{color:#ffd23f;font-weight:900}
+#teamflash{position:absolute;inset:0;z-index:2;pointer-events:none;opacity:0}
+#teamflash.ok{background:radial-gradient(circle at 50% 50%,rgba(57,217,138,.30),transparent 62%)}
+#teamflash.ng{background:radial-gradient(circle at 50% 50%,rgba(255,77,109,.34),transparent 62%)}
+#teamflash.go{animation:fl .3s ease-out}
+@keyframes fl{0%{opacity:1}100%{opacity:0}}
+#play-root.fx-good{animation:pg .16s}
+#play-root.fx-bad{animation:pb .22s}
+@keyframes pg{50%{background:#111a2a}}
+@keyframes pb{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+.hint{padding:10px 16px 18px;text-align:center;font-size:11px;color:#4d5479}
+
+/* ---- 結果 ---- */
+.rgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0}
+.rcell{background:#10142a;border:1px solid #232847;border-radius:14px;padding:15px;text-align:center}
+.rcell b{display:block;font-size:30px;font-weight:900;font-variant-numeric:tabular-nums}
+.rcell span{font-size:10.5px;color:var(--dim);letter-spacing:.14em}
+.accrow{display:grid;grid-template-columns:76px 1fr 62px;align-items:center;gap:10px;margin:9px 0;font-size:12px}
+.accbar{height:9px;background:#1b2142;border-radius:999px;overflow:hidden}
+.accbar i{display:block;height:100%;background:var(--c);border-radius:999px}
+.accms{text-align:right;color:var(--dim);font-variant-numeric:tabular-nums}
+.accname{font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#r-mvp{text-align:center;font-size:12.5px;color:#ffd23f;margin-top:14px;min-height:18px}
+h2{font-size:22px;margin:0 0 4px;font-weight:900}
+.sect{font-size:11px;color:var(--dim);letter-spacing:.18em;margin:22px 0 4px}
+</style>
+</head>
+<body>
+
+<!-- ========== タイトル ========== -->
+<section class="screen on" id="sc-title">
+  <div class="wrap">
+    <h1><small>SYNC TAP</small>シンクロ・タップ</h1>
+    <p class="lead">
+      3人が同じ部屋で、それぞれのスマホを持って遊びます。<br>
+      画面の指示に合わせて、3人が「いっせーの」でタップ。<br>
+      ひとりでもズレたら失敗。だんだん速くなります。
+    </p>
+
+    <span class="netstat wait">接続確認中…</span>
+
+    <label for="in-name">なまえ</label>
+    <input id="in-name" maxlength="8" placeholder="てつじん" autocomplete="off">
+
+    <label for="broker-select">通信経路（つながらない時だけ変更）</label>
+    <select id="broker-select"></select>
+
+    <div class="sect">はじめる</div>
+    <button id="btn-create">ルームを作る（あなたがホスト）</button>
+
+    <label for="in-code">友達が作ったルームに入る</label>
+    <div class="row">
+      <input id="in-code" inputmode="numeric" maxlength="4" placeholder="4桁の数字" autocomplete="off">
+      <button id="btn-join" class="ghost" style="margin-top:0">参加</button>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="foot">
+      まずホストが1台でルームを作り、表示された4桁を残り2人が入力します。<br>
+      <span id="a2hs">ブラウザの共有メニューから「ホーム画面に追加」すると、アプリのように開けます。</span><br>
+      <span id="build-stamp"></span>
+    </div>
+  </div>
+</section>
+
+<!-- ========== ロビー ========== -->
+<section class="screen" id="sc-lobby">
+  <div class="wrap">
+    <h2>メンバーを待っています</h2>
+    <p class="lead" style="margin-bottom:14px">この4桁を、残りの2人に伝えてください。</p>
+
+    <div class="codebox">
+      <div class="lbl">ルームコード</div>
+      <div class="code" id="lobby-code">0000</div>
+    </div>
+    <button id="btn-copy" class="ghost" style="margin-top:0">参加URLをコピー</button>
+
+    <div class="sect">時計のズレ（これが小さいほど公平に判定できます）</div>
+    <div class="syncq wait" id="sync-q">計測中…</div>
+
+    <div class="sect">メンバー</div>
+    <div id="player-list"></div>
+
+    <div class="spacer"></div>
+    <span class="netstat wait" style="align-self:center;margin-bottom:10px">…</span>
+    <button id="btn-start" disabled>ゲーム開始</button>
+    <div id="host-note"></div>
+  </div>
+</section>
+
+<!-- ========== プレイ ========== -->
+<section class="screen" id="sc-play">
+  <div id="play-root">
+    <div id="hud">
+      <span id="hud-lives">♥♥♥</span>
+      <span id="hud-round">R1</span>
+      <span id="hud-speed">SPEED 30</span>
+      <span id="hud-combo"></span>
+      <span id="hud-score">0</span>
+    </div>
+
+    <div id="pad">
+      <div id="teamflash" class="teamflash"></div>
+      <div id="countdown">3</div>
+      <div id="ring-wrap">
+        <svg viewBox="0 0 100 100">
+          <circle id="ring-bg" cx="50" cy="50" r="46"></circle>
+          <circle id="ring-fg" cx="50" cy="50" r="46"></circle>
+        </svg>
+      </div>
+      <div class="instr" id="instr">
+        <div id="instr-main">タップ</div>
+        <div id="instr-sub">3人いっせいに</div>
+      </div>
+      <div id="verdict" class="verdict"></div>
+    </div>
+
+    <div class="hint">画面のどこでもタップ／スワイプできます</div>
+  </div>
+</section>
+
+<!-- ========== 結果 ========== -->
+<section class="screen" id="sc-result">
+  <div class="wrap">
+    <h2>ゲームオーバー</h2>
+    <p class="lead" style="margin-bottom:0">3人の呼吸、どれくらい合っていたか。</p>
+
+    <div class="rgrid">
+      <div class="rcell"><b id="r-score">0</b><span>SCORE</span></div>
+      <div class="rcell"><b id="r-round">0</b><span>ROUNDS</span></div>
+      <div class="rcell"><b id="r-combo">0</b><span>MAX COMBO</span></div>
+      <div class="rcell"><b id="r-speed">0</b><span>FINAL SPEED</span></div>
+    </div>
+
+    <div class="sect">ひとりずつの平均ズレ</div>
+    <div id="r-acc"></div>
+    <div id="r-mvp"></div>
+
+    <div class="spacer"></div>
+    <button id="btn-again">もう一度</button>
+  </div>
+</section>
+
+<script src="./mqtt.min.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>
