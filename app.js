@@ -5,7 +5,7 @@
 
 /* ---------- 定数 ---------- */
 const VERSION = 'v1.0';
-const BUILD   = '2026-07-29 20:00';   // 更新したらここも変える（画面下に出る）
+const BUILD   = '2026-07-29 20:20';   // 更新したらここも変える（画面下に出る）
 const BROKERS = [
   { label: 'A',  url: 'wss://broker.emqx.io:8084/mqtt' },
   { label: 'B',  url: 'wss://broker.hivemq.com:8884/mqtt' },
@@ -210,13 +210,27 @@ function pruneRoster() {
 }
 
 /* ---------- 時計同期 ---------- */
+// 画面がバックグラウンドだとブラウザが処理を間引くため、計測値が実態より
+// 大きく出る。ロビーにいる間は計測を続け、復帰時には測り直す。
 function startSyncLoop() {
   setInterval(() => {
     if (!S.connected || !S.code || S.isHost) return;
-    if (S.syncCount > 400) return;
+    if (document.hidden) return;            // 裏に回っている間は測らない
+    if (inGame()) return;                   // プレイ中は通信を増やさない
+    if (S.syncCount > 3000) return;
     S.syncCount++;
     pub('sync/req', { id: S.me.id, t0: now() });
   }, 140);
+}
+
+// アプリに戻ってきたら、古い計測値を捨てて測り直す
+function resetSync() {
+  if (S.isHost || inGame()) return;
+  S.bestRtt = Infinity;
+  S.offset = 0;
+  S.synced = false;
+  S.syncCount = 0;
+  if (S.screen === 'lobby') renderLobby();
 }
 
 function onSyncReq(m) {
@@ -838,5 +852,9 @@ function enterRoom(code, asHost) {
 }
 
 window.addEventListener('DOMContentLoaded', boot);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) calibrateAudio(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  calibrateAudio();
+  resetSync();          // 裏に回っている間の不正確な計測値を捨てる
+});
 window.__SYNCTAP = { S, instructionOf, ROUND_AT, toHost, toLocal, now, COLORS };
