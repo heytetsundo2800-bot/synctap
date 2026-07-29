@@ -5,7 +5,7 @@
 
 /* ---------- 定数 ---------- */
 const VERSION = 'v1.0';
-const BUILD   = '2026-07-29 22:10';   // 更新したらここも変える（タイトル画面下に出る）
+const BUILD   = '2026-07-30 08:30';   // 更新したらここも変える（タイトル画面下に出る）
 const BROKERS = [
   { label: 'A',  url: 'wss://broker.emqx.io:8084/mqtt' },
   { label: 'B',  url: 'wss://broker.hivemq.com:8884/mqtt' },
@@ -243,11 +243,12 @@ function fxRing(x, y, color, max, w, dur, delay, a) {
   fxRun();
 }
 
+/* アイコン（マゼンタ×蛍光イエロー）に合わせた粒の色 */
 const PAL = {
-  perfect: ['#ffd23f', '#ffae00', '#fff3b0', '#ff8a3d', '#ffffff'],
-  good:    ['#39d98a', '#7cffc4', '#ffffff', '#2ee6a8'],
-  ok:      ['#4dabff', '#9fd2ff', '#ffffff'],
-  bad:     ['#ff3d6b', '#ff7a8f', '#8c1030'],
+  perfect: ['#f4ff2b', '#ffe14d', '#fff9b0', '#ff1f7a', '#ffffff'],
+  good:    ['#2bff9e', '#7cffc4', '#ffffff'],
+  ok:      ['#ffffff', '#ffd7e7', '#ff8fb4'],
+  bad:     ['#ff2d55', '#ff7a99', '#7a0f26'],
 };
 
 /* =========================================================
@@ -812,9 +813,9 @@ function celebrate(tier, gain, combo) {
   const cx = FX.w / 2, cy = FX.h * 0.42;
   if (tier === 'perfect') {
     flash('perfect');
-    fxRing(cx, cy, '#ffd23f', Math.max(FX.w, FX.h) * 0.62, 12, 0.72);
+    fxRing(cx, cy, '#f4ff2b', Math.max(FX.w, FX.h) * 0.62, 12, 0.72);
     fxRing(cx, cy, '#ffffff', Math.max(FX.w, FX.h) * 0.5, 7, 0.66, 0.08);
-    fxRing(cx, cy, '#ff8a3d', Math.max(FX.w, FX.h) * 0.44, 5, 0.6, 0.16);
+    fxRing(cx, cy, '#ff1f7a', Math.max(FX.w, FX.h) * 0.44, 6, 0.6, 0.16);
     fxBurst(cx, cy, { n: 64, speed: [320, 1050], life: [0.5, 1.15], size: [2, 5],
                       colors: PAL.perfect, shapes: ['spark', 'star', 'dot'], g: 820 });
     fxBurst(cx, FX.h + 20, { n: 46, ang: -Math.PI / 2, spread: 0.62, speed: [700, 1350],
@@ -822,13 +823,13 @@ function celebrate(tier, gain, combo) {
     sndPerfect(); buzz([0, 16, 36, 26]);
   } else if (tier === 'good') {
     flash('good');
-    fxRing(cx, cy, '#39d98a', Math.max(FX.w, FX.h) * 0.42, 8, 0.55);
+    fxRing(cx, cy, '#2bff9e', Math.max(FX.w, FX.h) * 0.42, 8, 0.55);
     fxBurst(cx, cy, { n: 30, speed: [240, 720], life: [0.36, 0.8], size: [2, 4],
                       colors: PAL.good, shapes: ['spark', 'dot'], g: 760 });
     sndGood(); buzz(18);
   } else {
     flash('ok');
-    fxRing(cx, cy, '#4dabff', Math.max(FX.w, FX.h) * 0.3, 6, 0.45);
+    fxRing(cx, cy, '#ffffff', Math.max(FX.w, FX.h) * 0.3, 6, 0.45);
     fxBurst(cx, cy, { n: 18, speed: [180, 520], life: [0.3, 0.6], size: [1.6, 3.2],
                       colors: PAL.ok, shapes: ['spark'], g: 700 });
     sndOk(); buzz(12);
@@ -840,7 +841,7 @@ function celebrate(tier, gain, combo) {
     sndFever();
     fxBurst(cx, FX.h + 20, { n: 60, ang: -Math.PI / 2, spread: 0.9, speed: [800, 1500],
       life: [1, 1.8], size: [3, 8], colors: PAL.perfect.concat(PAL.good), shapes: ['conf', 'star'], g: 950, drag: 0.996 });
-    fxRing(cx, FX.h * 0.5, '#ffd23f', Math.max(FX.w, FX.h) * 0.8, 14, 0.9);
+    fxRing(cx, FX.h * 0.5, '#f4ff2b', Math.max(FX.w, FX.h) * 0.8, 14, 0.9);
     buzz([0, 20, 50, 20, 50, 34]);
   }
 }
@@ -1027,7 +1028,7 @@ function endGame(m) {
     if (big) {
       fxBurst(FX.w / 2, FX.h + 20, { n: 90, ang: -Math.PI / 2, spread: 1.0, speed: [750, 1600],
         life: [1.1, 2], size: [3, 8], colors: PAL.perfect.concat(PAL.good), shapes: ['conf', 'star'], g: 900, drag: 0.996 });
-      fxRing(FX.w / 2, FX.h * 0.3, '#ffd23f', Math.max(FX.w, FX.h) * 0.7, 12, 0.9);
+      fxRing(FX.w / 2, FX.h * 0.3, '#f4ff2b', Math.max(FX.w, FX.h) * 0.7, 12, 0.9);
       sndPerfect();
     } else {
       fxBurst(FX.w / 2, FX.h * 0.3, { n: 24, speed: [200, 600], life: [0.5, 1], size: [2, 5],

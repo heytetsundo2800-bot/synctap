@@ -3,15 +3,15 @@
    → こちらでコードを更新したら、次に開いた時に必ず最新版になる。
      オフライン時だけキャッシュから出すので、電波が悪くても起動はする。 */
 
-const CACHE = 'synctap-v1';
+const CACHE = 'synctap-v2';
 const ASSETS = [
   './',
   './index.html',
   './app.js',
   './mqtt.min.js',
   './manifest.webmanifest',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
+  './icons/icon-192-v2.png',
+  './icons/icon-512-v2.png',
 ];
 
 self.addEventListener('install', (e) => {

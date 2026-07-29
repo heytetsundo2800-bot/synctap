@@ -25,11 +25,11 @@ svg{display:block}</style></head><body>${svg(scale)}</body></html>`;
   const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   const out = path.join(__dirname, '..', 'icons');
   const shots = [
-    { file: 'icon-512.png',          size: 512, scale: 1 },
-    { file: 'icon-192.png',          size: 192, scale: 1 },
-    { file: 'apple-touch-icon.png',  size: 180, scale: 1 },
-    { file: 'icon-maskable-512.png', size: 512, scale: 0.64 },
-    { file: 'favicon.png',           size: 64,  scale: 1 },
+    { file: 'icon-512-v2.png',          size: 512, scale: 1 },
+    { file: 'icon-192-v2.png',          size: 192, scale: 1 },
+    { file: 'apple-touch-icon-v2.png',  size: 180, scale: 1 },
+    { file: 'icon-maskable-512-v2.png', size: 512, scale: 0.64 },
+    { file: 'favicon-v2.png',           size: 64,  scale: 1 },
   ];
   for (const s of shots) {
     const ctx = await b.newContext({ viewport: { width: 512, height: 512 }, deviceScaleFactor: s.size / 512 });
