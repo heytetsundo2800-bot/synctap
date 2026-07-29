@@ -3,7 +3,7 @@
    → こちらでコードを更新したら、次に開いた時に必ず最新版になる。
      オフライン時だけキャッシュから出すので、電波が悪くても起動はする。 */
 
-const CACHE = 'synctap-v3';
+const CACHE = 'synctap-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -32,6 +32,9 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;   // 外部(ブローカー等)は素通し
+  // BGMはブラウザに任せる。途中再生の Range リクエスト(206)は Cache API に入れられないうえ、
+  // 毎回ダウンロードし直すと通信量がもったいないため。
+  if (url.pathname.includes('/bgm/')) return;
 
   e.respondWith((async () => {
     try {

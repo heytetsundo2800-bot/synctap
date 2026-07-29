@@ -5,7 +5,7 @@
 
 /* ---------- 定数 ---------- */
 const VERSION = 'v1.0';
-const BUILD   = '2026-07-30 19:20';   // 更新したらここも変える（タイトル画面下に出る）
+const BUILD   = '2026-07-30 21:40';   // 更新したらここも変える（タイトル画面下に出る）
 const BROKERS = [
   { label: 'A',  url: 'wss://broker.emqx.io:8084/mqtt' },
   { label: 'B',  url: 'wss://broker.hivemq.com:8884/mqtt' },
@@ -507,11 +507,130 @@ function buzz(pattern) {
 }
 
 /* =========================================================
+   BGM
+
+   ・画面に応じて自動で切り替える（タイトル／プレイ／鬼／勝ち／負け）
+   ・合図のクリック音とぶつからないよう、プレイ中だけ音量を下げる
+   ・スマホは操作しないと音を鳴らせないので、最初のタップで解除する
+   ・入切は端末に記憶する
+   ========================================================= */
+const BGM_KEY = 'st_bgm';
+const BGM = {
+  tracks: {
+    title: { src: './bgm/title.mp3', vol: 0.50 },   // タイトル・ロビー・練習の設定
+    play:  { src: './bgm/play.mp3',  vol: 0.34 },   // プレイ中（ふつう）
+    oni:   { src: './bgm/oni.mp3',   vol: 0.34 },   // プレイ中（鬼）
+    win:   { src: './bgm/win.mp3',   vol: 0.46 },   // 結果・勝ち
+    lose:  { src: './bgm/lose.mp3',  vol: 0.46 },   // 結果・負け
+  },
+  el: {}, want: null, playing: null, on: true, unlocked: false, timers: {},
+};
+
+function bgmEl(key) {
+  if (BGM.el[key]) return BGM.el[key];
+  const a = new Audio(BGM.tracks[key].src);
+  a.loop = true; a.preload = 'none'; a.volume = 0;
+  a.addEventListener('error', () => {});
+  BGM.el[key] = a;
+  return a;
+}
+function bgmPrefetch(keys) {
+  keys.forEach(k => {
+    const a = bgmEl(k);
+    if (a.dataset.fetched) return;              // 同じ曲を何度も落とさない
+    a.dataset.fetched = '1';
+    a.preload = 'auto';
+    try { a.load(); } catch (e) {}
+  });
+}
+function bgmFade(key, to, ms, stopAtEnd) {
+  const a = BGM.el[key];
+  if (!a) return;
+  clearInterval(BGM.timers[key]);
+  const from = a.volume, t0 = now();
+  BGM.timers[key] = setInterval(() => {
+    const k = clamp((now() - t0) / ms, 0, 1);
+    a.volume = clamp(from + (to - from) * k, 0, 1);
+    if (k >= 1) {
+      clearInterval(BGM.timers[key]);
+      if (stopAtEnd) { try { a.pause(); a.currentTime = 0; } catch (e) {} }
+    }
+  }, 40);
+}
+function bgmSync() {
+  const want = (BGM.on && BGM.unlocked) ? BGM.want : null;
+  if (BGM.playing === want) return;
+  const old = BGM.playing;
+  BGM.playing = want;
+  if (old) bgmFade(old, 0, 320, true);
+  if (want) {
+    const a = bgmEl(want);
+    a.preload = 'auto';
+    try { a.currentTime = 0; } catch (e) {}
+    a.volume = 0;
+    const p = a.play();
+    if (p && p.catch) p.catch(() => { BGM.playing = null; });   // 自動再生が弾かれたら次の操作で再挑戦
+    bgmFade(want, BGM.tracks[want].vol, 600);
+  }
+}
+function bgmSet(key) { BGM.want = key; bgmSync(); }
+function bgmToggle() {
+  BGM.on = !BGM.on;
+  try { localStorage.setItem(BGM_KEY, BGM.on ? '1' : '0'); } catch (e) {}
+  renderBgmBtn();
+  bgmSync();
+}
+function renderBgmBtn() {
+  const b = $('#btn-bgm');
+  if (!b) return;
+  b.classList.toggle('off', !BGM.on);
+  // プレイ中は画面全体がタップ判定なので、押し間違い防止のため隠す
+  b.classList.toggle('show', S.screen !== 'play');
+}
+/* 画面ごとの曲を決める */
+function bgmForScreen() {
+  if (S.screen === 'play') return (S.speed === 'oni') ? 'oni' : 'play';
+  if (S.screen === 'result') {
+    const m = S.lastResult || {};
+    if (m.vs) {
+      const me = Math.max(0, S.me.idx);
+      return (m.winner >= 0 && m.team && m.winner === m.team[me]) ? 'win' : 'lose';
+    }
+    return ['S+', 'S', 'A', 'B'].includes(rankOf(m.round || 0, m.speed_key || 'normal')) ? 'win' : 'lose';
+  }
+  return 'title';   // タイトル・ロビー・練習の設定画面
+}
+function bgmUnlock() {
+  if (BGM.unlocked) return;
+  BGM.unlocked = true;
+  bgmSync();
+}
+function bgmInit() {
+  try { BGM.on = localStorage.getItem(BGM_KEY) !== '0'; } catch (e) {}
+  $('#btn-bgm').addEventListener('click', (e) => { e.stopPropagation(); bgmToggle(); });
+  // 最初のタップ／クリックで解除（iOS・Android の自動再生制限の対策）
+  ['pointerdown', 'keydown'].forEach(ev =>
+    document.addEventListener(ev, bgmUnlock, { capture: true }));
+  bgmPrefetch(['title']);
+  bgmSet('title');
+  renderBgmBtn();
+  document.addEventListener('visibilitychange', () => {
+    if (!BGM.playing) return;
+    const a = BGM.el[BGM.playing];
+    if (!a) return;
+    if (document.hidden) { try { a.pause(); } catch (e) {} }
+    else { const p = a.play(); if (p && p.catch) p.catch(() => {}); }
+  });
+}
+
+/* =========================================================
    画面
    ========================================================= */
 function show(screen) {
   S.screen = screen;
   $$('.screen').forEach(el => el.classList.toggle('on', el.id === 'sc-' + screen));
+  bgmSet(bgmForScreen());
+  renderBgmBtn();
 }
 function setNetStatus(text, cls) {
   $$('.netstat').forEach(el => { el.textContent = text; el.className = 'netstat ' + cls; });
@@ -681,6 +800,7 @@ function setPrSpeed(k) {
 function openPractice() {
   setAiLevel(S.aiLevel);
   setPrSpeed(S.prSpeed);
+  bgmPrefetch(['play', 'oni']);
   show('practice');
   const w = $('#sc-practice .wrap');
   if (w) w.scrollTop = 0;   // 前回の続きの位置から開かないように
@@ -746,7 +866,9 @@ function aiTurn(round) {
 function startGame(seed, startAtHost, roster, playKey, speedKey, vsSetup, judgeWait) {
   const PL = PLAYS[playKey] || PLAYS.coop;
   const SP = SPEEDS[speedKey] || SPEEDS.normal;
+  S.play = PL.key; S.speed = SP.key;   // 参加側にもホストの設定を反映（BGMの選択にも使う）
   S.roster = roster || S.roster;
+  bgmPrefetch(['win', 'lose']);
   const me = S.roster.find(p => p.id === S.me.id);
   S.me.idx = me ? me.idx : -1;
   const n = S.roster.length;
@@ -1693,6 +1815,7 @@ function boot() {
   try { seen = localStorage.getItem(HOWTO_KEY) === '1'; } catch (e) {}
   if (!seen && !params.get('nohowto')) openHowto(0);
 
+  bgmInit();
   fxInit();
   bindInput();
   setInterval(calibrateAudio, 5000);
@@ -1719,6 +1842,8 @@ function enterRoom(code, asHost) {
   S.isHost = asHost;
   initAudio();
 
+  bgmPrefetch(['play', 'oni']);
+
   const go = () => {
     subRoom();
     if (asHost) {
@@ -1744,4 +1869,4 @@ document.addEventListener('visibilitychange', () => {
 });
 
 window.__SYNCTAP = { S, instructionOf, insOf, toHost, toLocal, now, COLORS, PLAYS, SPEEDS, VS,
-                     celebrate, showVerdict, failEffect };
+                     celebrate, showVerdict, failEffect, BGM };
