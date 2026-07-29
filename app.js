@@ -5,7 +5,7 @@
 
 /* ---------- 定数 ---------- */
 const VERSION = 'v1.0';
-const BUILD   = '2026-07-30 13:25';   // 更新したらここも変える（タイトル画面下に出る）
+const BUILD   = '2026-07-30 16:40';   // 更新したらここも変える（タイトル画面下に出る）
 const BROKERS = [
   { label: 'A',  url: 'wss://broker.emqx.io:8084/mqtt' },
   { label: 'B',  url: 'wss://broker.hivemq.com:8884/mqtt' },
@@ -34,7 +34,7 @@ const PLAYS = {
 /* スピード：lv0 が大きいほど最初から速く・判定も厳しい */
 const SPEEDS = {
   normal: { key: 'normal', name: 'ふつう', label: 'NORMAL', lv0: 0,  tutorial: 3, lives: 5 },
-  oni:    { key: 'oni',    name: '鬼',     label: 'ONI',    lv0: 30, tutorial: 0, lives: 3 },
+  oni:    { key: 'oni',    name: '鬼',     label: 'ONI',    lv0: 22, tutorial: 0, lives: 3 },
 };
 /* 対戦のパラメータ（ここをいじれば手ざわりが変わる） */
 const VS = {
@@ -46,10 +46,11 @@ const VS = {
   FAIL_ERR: 420,     // ミスした人の誤差はこの値として扱う
 };
 
-const WIN_BASE    = 200;  // 成功と認める最大ズレ(ms)：レベルが上がるほど狭くなる
+const WIN_BASE    = 200;  // 成功と認める最大ズレ(ms)：テンポが速くなるほど狭くなる
+// 判定の広さは「そのときの間隔」で決める（速さと難しさが必ず釣り合うように）
 // 人数が増えるほど「全員そろう」難易度が跳ね上がるので、その分だけ判定を広げる
 const WIN_OF      = (lv, n) => Math.round(
-  Math.max(85, WIN_BASE - 2.2 * lv) * (1 + 0.045 * Math.max(0, (n || 3) - 3))
+  clamp(74 + 0.063 * intervalOf(lv), 85, WIN_BASE) * (1 + 0.045 * Math.max(0, (n || 3) - 3))
 );
 const GUARD_PRE   = 700;  // 「さわるな」系の禁止区間 開始(ms前)
 const GUARD_POST  = 300;  // 同 終了(ms後)
@@ -88,7 +89,15 @@ function escapeHtml(s) {
 }
 
 /* ---------- ラウンド設計 ---------- */
-const intervalOf = (lv) => Math.max(520, 2000 - 35 * lv);
+/* だんだん速くなるカーブ。
+   等差（毎回 -35ms）だと、序盤はテンポがほとんど変わらないのに
+   終盤で一気に速く感じる（体感の速さは間隔の逆数なので）。
+   そこで等比＝毎ラウンド一定の「割合」で縮める。
+   これだと最初のラウンドからじわじわ速くなり、加速の体感が最後まで一定になる。 */
+const IV_START = 2000;   // 1ラウンド目の間隔(ms)
+const IV_MIN   = 520;    // これ以上は速くならない（約42ラウンド目で到達）
+const IV_DECAY = 0.968;  // 毎ラウンド 3.2% ずつ短くなる
+const intervalOf = (lv) => Math.max(IV_MIN, Math.round(IV_START * Math.pow(IV_DECAY, lv)));
 const SPEED_OF   = (lv) => Math.round(60000 / intervalOf(lv));
 
 const DIRS = [
@@ -1465,6 +1474,57 @@ function registerSW() {
 }
 
 /* =========================================================
+   あそびかた（起動時にかぶせる説明）
+   ========================================================= */
+const HOWTO_KEY = 'st_howto_off';   // '1' なら次回から出さない
+let htPage = 0;
+
+function htPages() { return $$('#howto .ht-page'); }
+
+function htRender() {
+  const pages = htPages();
+  const last = htPage >= pages.length - 1;
+  pages.forEach((p, i) => p.classList.toggle('on', i === htPage));
+  $$('#ht-dots i').forEach((d, i) => d.classList.toggle('on', i === htPage));
+  $('#ht-step').textContent = 'あそびかた ' + (htPage + 1) + ' / ' + pages.length;
+  $('#ht-next').textContent = last ? 'はじめる' : '次へ';
+  $('#ht-skip').style.display = last ? 'none' : '';   // 最後は「はじめる」を全幅で
+  $('.ht-body').scrollTop = 0;
+}
+
+function openHowto(page) {
+  htPage = page || 0;
+  $('#ht-never').checked = localStorage.getItem(HOWTO_KEY) === '1';
+  htRender();
+  $('#howto').classList.add('on');
+}
+
+function closeHowto() {
+  try {
+    localStorage.setItem(HOWTO_KEY, $('#ht-never').checked ? '1' : '0');
+  } catch (e) {}
+  $('#howto').classList.remove('on');
+}
+
+function bindHowto() {
+  $('#ht-close').addEventListener('click', closeHowto);
+  $('#ht-skip').addEventListener('click', closeHowto);
+  $('#ht-next').addEventListener('click', () => {
+    if (htPage >= htPages().length - 1) { closeHowto(); return; }
+    htPage++; htRender();
+  });
+  // カードの外側をタップしても閉じる
+  $('#howto').addEventListener('click', (e) => { if (e.target.id === 'howto') closeHowto(); });
+  document.addEventListener('keydown', (e) => {
+    if (!$('#howto').classList.contains('on')) return;
+    if (e.key === 'Escape') closeHowto();
+    else if (e.key === 'ArrowRight' || e.key === 'Enter') $('#ht-next').click();
+    else if (e.key === 'ArrowLeft' && htPage > 0) { htPage--; htRender(); }
+  });
+  $('#btn-howto').addEventListener('click', () => openHowto(0));
+}
+
+/* =========================================================
    起動
    ========================================================= */
 function boot() {
@@ -1512,6 +1572,12 @@ function boot() {
     try { await navigator.clipboard.writeText(url); toast('参加URLをコピーしました'); }
     catch (e) { prompt('このURLを2人に送ってください', url); }
   });
+
+  bindHowto();
+  // 「次回からは表示しない」にチェックが入っていなければ、起動のたびに出す
+  let seen = false;
+  try { seen = localStorage.getItem(HOWTO_KEY) === '1'; } catch (e) {}
+  if (!seen && !params.get('nohowto')) openHowto(0);
 
   fxInit();
   bindInput();

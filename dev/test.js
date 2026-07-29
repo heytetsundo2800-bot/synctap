@@ -1,7 +1,7 @@
 /* 3端末を同時に立ち上げて実際にプレイさせる検証 */
 const { chromium } = require('playwright');
 
-const BASE = (process.env.DIST ? 'http://localhost:8080/dist/index.html' : 'http://localhost:8080/') + '?b=ws://localhost:9001' + (process.env.LAG ? '&lag=' + process.env.LAG : '');
+const BASE = (process.env.DIST ? 'http://localhost:8080/dist/index.html' : 'http://localhost:8080/') + '?b=ws://localhost:9001&nohowto=1' + (process.env.LAG ? '&lag=' + process.env.LAG : '');
 const N = Math.max(1, Math.min(10, +(process.env.PLAYERS || 3)));
 const NAMES = Array.from({length: N}, (_, i) => i === 0 ? 'てつじん' : 'なかま' + i);
 

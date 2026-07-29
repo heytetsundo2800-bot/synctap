@@ -247,6 +247,50 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
   line-height:1.7;font-weight:800}
 #r-roast{margin-top:12px;padding:14px 16px;border-radius:13px;background:#2a0a1a;
   border:1.5px solid #5a1030;color:#ff8fb4;font-size:13px;line-height:1.8;text-align:center;font-weight:800}
+
+/* ---------- あそびかた（起動時の説明） ---------- */
+#howto{position:fixed;inset:0;z-index:120;background:#0b0610f5;display:none;
+  align-items:center;justify-content:center;
+  padding:calc(var(--safe-t) + 14px) 14px calc(var(--safe-b) + 14px)}
+#howto.on{display:flex}
+.ht-card{position:relative;width:100%;max-width:480px;max-height:100%;background:var(--panel);
+  border:1.5px solid var(--line);border-radius:22px;display:flex;flex-direction:column;
+  padding:20px 20px 16px;overflow:hidden}
+.ht-x{position:absolute;top:10px;right:10px;width:38px;height:38px;padding:0;margin:0;
+  border-radius:50%;background:#2a1730;color:var(--fg);font-size:19px;font-weight:900;line-height:1;
+  border:1.5px solid var(--line);display:flex;align-items:center;justify-content:center;z-index:3}
+.ht-step{font-size:10px;letter-spacing:.28em;color:var(--brand);font-weight:900;margin-bottom:8px}
+.ht-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;min-height:0}
+.ht-page{display:none}
+.ht-page.on{display:block;animation:htin .22s ease-out}
+@keyframes htin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.ht-page h3{margin:0 0 12px;font-size:21px;font-weight:900;letter-spacing:.02em;padding-right:46px}
+.ht-page p{margin:0 0 14px;font-size:13px;line-height:1.85;color:var(--dim)}
+.ht-page p b{color:var(--fg)}
+.ht-list{display:flex;flex-direction:column;gap:9px;margin:0 0 4px}
+.ht-item{display:grid;grid-template-columns:46px 1fr;align-items:center;gap:12px;
+  background:#130a17;border:1.5px solid var(--line);border-radius:14px;padding:11px 14px}
+.ht-ico{font-size:21px;font-weight:900;text-align:center;color:var(--accent);line-height:1.1}
+.ht-ico.ng{color:var(--ng)}.ht-ico.ok{color:var(--ok)}
+.ht-ico.sm{font-size:14px;letter-spacing:.06em}
+.ht-item b{display:block;font-size:14px;font-weight:900;margin-bottom:3px}
+.ht-item span{font-size:11px;color:var(--dim);line-height:1.6;display:block}
+.ht-hero{text-align:center;font-size:clamp(34px,11vw,48px);font-weight:900;color:var(--accent);
+  letter-spacing:.04em;margin:2px 0 14px;line-height:1.1}
+.ht-dots{display:flex;gap:7px;justify-content:center;align-items:center;margin:14px 0 2px}
+.ht-dots i{width:7px;height:7px;border-radius:50%;background:#3a1e42;display:block;transition:.2s}
+.ht-dots i.on{background:var(--accent);width:20px;border-radius:99px}
+.ht-nav{display:flex;gap:10px}
+.ht-nav .ht-skip{flex:0 0 38%;width:auto;font-size:15px;letter-spacing:0;white-space:nowrap}
+.ht-nav .ht-next{flex:1;width:auto}
+.ht-check{display:flex;align-items:center;gap:10px;justify-content:center;margin:14px 0 2px;
+  font-size:12px;color:var(--dim);letter-spacing:.04em;cursor:pointer}
+.ht-check input{display:none}
+.ht-check .box{width:21px;height:21px;border-radius:6px;border:1.5px solid var(--line);
+  background:#130a17;display:flex;align-items:center;justify-content:center;flex:0 0 21px}
+.ht-check .box::after{content:'✓';font-size:14px;font-weight:900;color:#1a1004;opacity:0}
+.ht-check input:checked + .box{background:var(--accent);border-color:var(--accent)}
+.ht-check input:checked + .box::after{opacity:1}
 </style>
 </head>
 <body>
@@ -292,6 +336,8 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
       <input id="in-code" inputmode="numeric" maxlength="4" placeholder="4桁の数字" autocomplete="off">
       <button id="btn-join" class="ghost" style="margin-top:0;flex:0 0 108px;width:108px">参加</button>
     </div>
+
+    <button id="btn-howto" class="ghost" style="margin-top:16px">あそびかたを見る</button>
 
     <details style="margin-top:20px">
       <summary style="font-size:11px;color:var(--dim);letter-spacing:.1em;cursor:pointer">つながらないとき</summary>
@@ -433,6 +479,75 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
     <button id="btn-home" class="ghost">ホームに戻る</button>
   </div>
 </section>
+
+<!-- ========== あそびかた（起動時にかぶせる説明） ========== -->
+<div id="howto">
+  <div class="ht-card">
+    <button id="ht-close" class="ht-x" aria-label="閉じる">✕</button>
+    <div class="ht-step" id="ht-step">あそびかた 1 / 4</div>
+
+    <div class="ht-body">
+      <div class="ht-page on">
+        <h3>どんなゲーム？</h3>
+        <div class="ht-hero">せーの!!</div>
+        <p>画面に出る合図に、みんなで<b>いっせいに</b>タップするゲームです。<br>
+        ズレが小さいほど高得点。<b>1人でも大きくズレると失敗</b>になります。</p>
+        <p>1人でも、最大10人でも遊べます。<br>それぞれのスマホで同じ部屋に入るだけ。</p>
+      </div>
+
+      <div class="ht-page">
+        <h3>4つの合図</h3>
+        <div class="ht-list">
+          <div class="ht-item"><div class="ht-ico">●</div>
+            <div><b>タップ</b><span>全員でいっせいに1回タップ</span></div></div>
+          <div class="ht-item"><div class="ht-ico">→</div>
+            <div><b>スワイプ</b><span>出た矢印の向きに指をはらう</span></div></div>
+          <div class="ht-item"><div class="ht-ico">★</div>
+            <div><b>あなただけ</b><span>名前が出た人だけタップ。ほかの人はさわらない</span></div></div>
+          <div class="ht-item"><div class="ht-ico ng">✕</div>
+            <div><b>さわるな</b><span>何もしないのが正解。さわったらミス</span></div></div>
+        </div>
+      </div>
+
+      <div class="ht-page">
+        <h3>判定とライフ</h3>
+        <div class="ht-list">
+          <div class="ht-item"><div class="ht-ico">◎</div>
+            <div><b>PERFECT</b><span>ぴったり合った。大きく加点＆コンボ</span></div></div>
+          <div class="ht-item"><div class="ht-ico ok">○</div>
+            <div><b>GOOD</b><span>少しズレたけどセーフ</span></div></div>
+          <div class="ht-item"><div class="ht-ico ng">✕</div>
+            <div><b>MISS</b><span>ズレすぎ・押し忘れ・押しちゃダメなのに押した</span></div></div>
+        </div>
+        <p style="margin-top:14px">ライフは画面の<b>右上</b>。全員のミスが重なって0になったら終わりです。<br>
+        ラウンドが進むほど、少しずつテンポが速くなります。</p>
+      </div>
+
+      <div class="ht-page">
+        <h3>2つのあそびかた</h3>
+        <div class="ht-list">
+          <div class="ht-item"><div class="ht-ico">◯</div>
+            <div><b>協力</b><span>全員で1つのライフを守って、どこまで続けられるか</span></div></div>
+          <div class="ht-item"><div class="ht-ico ng sm">VS</div>
+            <div><b>対戦</b><span>2チームに分かれて1対1。相手よりキレイに合わせるとダメージ。HP1500の削り合い</span></div></div>
+        </div>
+        <p style="margin-top:14px">スピードは<b>ふつう</b>と<b>鬼</b>。鬼は最初から高速で判定も厳しめ。<br>
+        どちらもホストがロビーで選べます。</p>
+      </div>
+    </div>
+
+    <div class="ht-dots" id="ht-dots"><i class="on"></i><i></i><i></i><i></i></div>
+
+    <label class="ht-check">
+      <input type="checkbox" id="ht-never"><span class="box"></span>次回からは表示しない
+    </label>
+
+    <div class="ht-nav">
+      <button id="ht-skip" class="ghost ht-skip">スキップ</button>
+      <button id="ht-next" class="ht-next">次へ</button>
+    </div>
+  </div>
+</div>
 
 <script src="./mqtt.min.js"></script>
 <script src="./app.js"></script>
