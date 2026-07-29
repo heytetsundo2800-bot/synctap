@@ -5,7 +5,7 @@
 
 /* ---------- 定数 ---------- */
 const VERSION = 'v1.0';
-const BUILD   = '2026-07-30 23:05';   // 更新したらここも変える（タイトル画面下に出る）
+const BUILD   = '2026-07-31 00:20';   // 更新したらここも変える（タイトル画面下に出る）
 const BROKERS = [
   { label: 'A',  url: 'wss://broker.emqx.io:8084/mqtt' },
   { label: 'B',  url: 'wss://broker.hivemq.com:8884/mqtt' },
@@ -76,6 +76,10 @@ const now = () => performance.timeOrigin + performance.now();
 const $  = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+/* localStorage はプライベートブラウズや設定によっては触るだけで例外になる。
+   そこで落ちると起動そのものが止まるので、必ずこの2つ経由で読み書きする。 */
+const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
 const rand = (a, b) => a + Math.random() * (b - a);
 
 function mulberry32(a) {
@@ -576,7 +580,7 @@ function bgmSync() {
 function bgmSet(key) { BGM.want = key; bgmSync(); }
 function bgmToggle() {
   BGM.on = !BGM.on;
-  try { localStorage.setItem(BGM_KEY, BGM.on ? '1' : '0'); } catch (e) {}
+  lsSet(BGM_KEY, BGM.on ? '1' : '0');
   renderBgmBtn();
   bgmSync();
 }
@@ -606,7 +610,7 @@ function bgmUnlock() {
   bgmSync();
 }
 function bgmInit() {
-  try { BGM.on = localStorage.getItem(BGM_KEY) !== '0'; } catch (e) {}
+  BGM.on = lsGet(BGM_KEY) !== '0';
   $('#btn-bgm').addEventListener('click', (e) => { e.stopPropagation(); bgmToggle(); });
   // 最初のタップ／クリックで解除（iOS・Android の自動再生制限の対策）
   ['pointerdown', 'keydown'].forEach(ev =>
@@ -810,7 +814,7 @@ function startPractice() {
   const lv = AI_LEVELS[S.aiLevel] || AI_LEVELS.mid;
   const name = ($('#in-name').value || '').trim() || 'あなた';
   S.me.name = name;
-  try { localStorage.setItem('st_name', name); } catch (e) {}
+  lsSet('st_name', name);
 
   // 通信は一切使わない：code が null なら pub() は何もしない
   S.code = null;
@@ -1721,15 +1725,13 @@ function htRender() {
 
 function openHowto(page) {
   htPage = page || 0;
-  $('#ht-never').checked = localStorage.getItem(HOWTO_KEY) === '1';
+  $('#ht-never').checked = lsGet(HOWTO_KEY) === '1';
   htRender();
   $('#howto').classList.add('on');
 }
 
 function closeHowto() {
-  try {
-    localStorage.setItem(HOWTO_KEY, $('#ht-never').checked ? '1' : '0');
-  } catch (e) {}
+  lsSet(HOWTO_KEY, $('#ht-never').checked ? '1' : '0');
   $('#howto').classList.remove('on');
   // 続けて「ホーム画面に追加」の案内（必要な人にだけ出る）
   setTimeout(() => { if (S.screen === 'title') maybeShowAddHome(); }, 260);
@@ -1840,13 +1842,12 @@ function renderAddHome() {
 }
 function openAddHome() { renderAddHome(); $('#addhome').classList.add('on'); }
 function closeAddHome(done) {
-  try { localStorage.setItem(A2HS_KEY, done ? 'done' : String(Date.now())); } catch (e) {}
+  lsSet(A2HS_KEY, done ? 'done' : String(Date.now()));
   $('#addhome').classList.remove('on');
 }
 function maybeShowAddHome() {
   if (isStandalone()) return;                       // すでにアプリとして開いている
-  let v = null;
-  try { v = localStorage.getItem(A2HS_KEY); } catch (e) {}
+  const v = lsGet(A2HS_KEY);
   if (v === 'done') return;
   if (v && Date.now() - (+v) < A2HS_AGAIN) return;  // 「あとで」から1週間は出さない
   openAddHome();
@@ -1883,7 +1884,7 @@ function boot() {
   if (params.get('b')) BROKERS.unshift({ label: 'LOCAL', url: params.get('b') });
   LAG = Math.max(0, Math.min(2000, +(params.get('lag') || 0)));
 
-  const savedName = localStorage.getItem('st_name') || '';
+  const savedName = lsGet('st_name') || '';
   $('#in-name').value = params.get('name') || savedName || '';
   if (params.get('code')) $('#in-code').value = params.get('code');
 
@@ -1934,8 +1935,7 @@ function boot() {
   bindHowto();
   bindAddHome();
   // 「次回からは表示しない」にチェックが入っていなければ、起動のたびに出す
-  let seen = false;
-  try { seen = localStorage.getItem(HOWTO_KEY) === '1'; } catch (e) {}
+  const seen = lsGet(HOWTO_KEY) === '1';
   const skipIntro = !!params.get('nohowto');           // 検証用：かぶせる画面を全部出さない
   if (!seen && !skipIntro) openHowto(0);
   else if (!skipIntro) maybeShowAddHome();             // 2回目以降はこちらだけ
@@ -1962,7 +1962,7 @@ function tryNextBroker(failedIdx) {
 function enterRoom(code, asHost) {
   const name = ($('#in-name').value || '').trim() || ('プレイヤー' + ((Math.random() * 90 + 10) | 0));
   S.me.name = name;
-  localStorage.setItem('st_name', name);
+  lsSet('st_name', name);
   S.code = code;
   S.isHost = asHost;
   initAudio();
@@ -1986,7 +1986,23 @@ function enterRoom(code, asHost) {
   else connectBroker(S.brokerIdx, go, () => tryNextBroker(S.brokerIdx));
 }
 
-window.addEventListener('DOMContentLoaded', boot);
+/* 起動中に何かで落ちても、真っ暗な画面のまま放置しないための保険。
+   何が起きたかを画面に出して、リロードだけはできるようにする。 */
+function bootSafe() {
+  try { boot(); }
+  catch (err) {
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;inset:0;z-index:999;background:#0b0610;color:#fff3fa;' +
+      'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;' +
+      'padding:28px;text-align:center;font-size:14px;line-height:1.9';
+    d.innerHTML = '<b style="font-size:18px">うまく起動できませんでした</b>' +
+      '<div style="color:#a487ad;font-size:12px">' + escapeHtml(String(err && err.message || err)) + '</div>' +
+      '<button style="width:auto;padding:14px 28px;border-radius:999px;border:0;background:#f4ff2b;' +
+      'color:#1a1004;font-weight:900;font-size:15px" onclick="location.reload()">読み込み直す</button>';
+    document.body.appendChild(d);
+  }
+}
+window.addEventListener('DOMContentLoaded', bootSafe);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
   calibrateAudio();
