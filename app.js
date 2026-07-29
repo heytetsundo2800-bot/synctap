@@ -1,11 +1,11 @@
 /* =========================================================
    シンクロ・タップ  /  SYNC TAP
-   3〜10人が同室・各自スマホ・リアルタイム同期タップゲーム
+   1〜10人・各自スマホ・リアルタイム同期タップゲーム
    ========================================================= */
 
 /* ---------- 定数 ---------- */
 const VERSION = 'v1.0';
-const BUILD   = '2026-07-30 08:30';   // 更新したらここも変える（タイトル画面下に出る）
+const BUILD   = '2026-07-30 09:10';   // 更新したらここも変える（タイトル画面下に出る）
 const BROKERS = [
   { label: 'A',  url: 'wss://broker.emqx.io:8084/mqtt' },
   { label: 'B',  url: 'wss://broker.hivemq.com:8884/mqtt' },
@@ -482,8 +482,8 @@ function renderLobby() {
     btn.textContent = n + '人で開始する';
     btn.className = S.mode === 'oni' ? 'hot' : '';
     $('#host-note').textContent = !allSynced ? '同期が終わるまで待ってください'
-      : (n < 3 ? '※ ' + n + '人でも開始できます（動作確認用）'
-               : 'あと' + (MAX_PLAYERS - n) + '人まで参加できます');
+      : (n === 1 ? '1人でも遊べます。あと' + (MAX_PLAYERS - n) + '人まで参加できます'
+                 : 'あと' + (MAX_PLAYERS - n) + '人まで参加できます');
   } else {
     btn.style.display = 'none';
     $('#host-note').textContent = 'ホストの開始を待っています…';
