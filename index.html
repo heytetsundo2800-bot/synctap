@@ -321,7 +321,11 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
     </div>
     <button id="btn-copy" class="ghost" style="margin-top:0">参加URLをコピー</button>
 
-    <div class="sect">時計のズレ（小さいほど公平に判定できます）</div>
+    <div class="sect" style="display:flex;align-items:baseline">
+      <span>時計のズレ</span>
+      <span id="btn-resync" style="margin-left:auto;color:var(--accent);cursor:pointer;
+        letter-spacing:.06em;font-weight:800">測り直す</span>
+    </div>
     <div class="syncq wait" id="sync-q">計測中…</div>
 
     <div class="sect" style="display:flex;align-items:baseline">

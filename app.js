@@ -5,7 +5,7 @@
 
 /* ---------- 定数 ---------- */
 const VERSION = 'v1.0';
-const BUILD   = '2026-07-30 11:20';   // 更新したらここも変える（タイトル画面下に出る）
+const BUILD   = '2026-07-30 13:25';   // 更新したらここも変える（タイトル画面下に出る）
 const BROKERS = [
   { label: 'A',  url: 'wss://broker.emqx.io:8084/mqtt' },
   { label: 'B',  url: 'wss://broker.hivemq.com:8884/mqtt' },
@@ -132,6 +132,8 @@ const S = {
   presence: new Map(),
   offset: 0,             // hostClock = localClock + offset
   bestRtt: Infinity,
+  samples: [],
+  syncErr: null,
   syncCount: 0,
   synced: false,
   game: null,
@@ -307,9 +309,12 @@ function connectBroker(idx, onReady, onFail) {
   });
 }
 
+let LAG = 0;   // 検証用の人工遅延(ms)。?lag=300 のように指定する
 function pub(suffix, obj) {
   if (!S.client || !S.connected || !S.code) return;
-  S.client.publish(topicBase() + '/' + suffix, JSON.stringify(obj), { qos: 0 });
+  const send = () => { try { S.client.publish(topicBase() + '/' + suffix, JSON.stringify(obj), { qos: 0 }); } catch (e) {} };
+  if (LAG > 0) setTimeout(send, LAG / 2 + Math.random() * LAG * 0.15);
+  else send();
 }
 function subRoom() { S.client.subscribe(topicBase() + '/#', { qos: 0 }); }
 
@@ -330,6 +335,7 @@ function startHeartbeat() {
     pub('presence', {
       id: S.me.id, name: S.me.name, host: S.isHost,
       synced: S.synced, rtt: isFinite(S.bestRtt) ? Math.round(S.bestRtt) : null,
+      err: S.syncErr == null ? null : Math.round(S.syncErr), ns: S.samples.length,
       playing: inGame(),
     });
   }, 900);
@@ -337,7 +343,8 @@ function startHeartbeat() {
 
 function onPresence(m) {
   if (m.id === S.me.id) return;
-  S.presence.set(m.id, { t: now(), name: m.name, synced: m.synced, rtt: m.rtt, host: m.host });
+  S.presence.set(m.id, { t: now(), name: m.name, synced: m.synced, rtt: m.rtt,
+                         err: m.err, ns: m.ns, host: m.host });
   if (S.isHost && !inGame()) {
     if (!S.roster.find(p => p.id === m.id) && S.roster.length < MAX_PLAYERS) {
       S.roster.push({ id: m.id, name: m.name || 'プレイヤー', idx: S.roster.length });
@@ -361,44 +368,76 @@ function pruneRoster() {
   if (S.roster.length !== before) { broadcastRoster(); renderLobby(); }
 }
 
-/* ---------- 時計同期 ---------- */
+/* =========================================================
+   時計同期
+
+   公開ブローカーを経由するぶん、往復（RTT）は数百msになることがある。
+   ただし「往復が遅い＝ズレが大きい」ではない。行きと帰りが同じくらいなら、
+   往復が400msでもズレの推定は十分に正確になる。
+   なので RTT では判断せず、良いサンプルを何本も取って
+   「推定値どうしのばらつき」を精度の指標にする。
+   ========================================================= */
+const SYNC_MIN_SAMPLES = 10;   // これだけ集まれば開始できる
+const SYNC_KEEP        = 40;   // 保持するサンプル数
+const SYNC_USE         = 7;    // 推定に使う「速かった順」の本数
+
 function startSyncLoop() {
   setInterval(() => {
     if (!S.connected || !S.code || S.isHost) return;
     if (document.hidden || inGame()) return;   // 裏に回っている間の計測は当てにならない
-    if (S.syncCount > 3000) return;
+    if (S.syncCount > 5000) return;
     S.syncCount++;
     pub('sync/req', { id: S.me.id, t0: now() });
   }, 140);
 }
+
 function resetSync() {
   if (S.isHost || inGame()) return;
-  S.bestRtt = Infinity; S.offset = 0; S.synced = false; S.syncCount = 0;
+  S.samples = []; S.bestRtt = Infinity; S.offset = 0;
+  S.syncErr = null; S.synced = false; S.syncCount = 0;
   if (S.screen === 'lobby') renderLobby();
 }
+
 function onSyncReq(m) {
   if (!S.isHost) return;
   pub('sync/res', { id: m.id, t0: m.t0, t1: now() });
 }
+
 function onSyncRes(m) {
   if (m.id !== S.me.id) return;
   const t2 = now();
   const rtt = t2 - m.t0;
-  if (rtt < S.bestRtt) {
-    S.bestRtt = rtt;
-    S.offset  = m.t1 - (m.t0 + t2) / 2;
-    S.synced  = S.bestRtt < 400;
-  }
+  if (!(rtt >= 0) || rtt > 5000) return;
+  const offset = m.t1 - (m.t0 + t2) / 2;
+
+  S.samples.push({ rtt, offset });
+  // 速かった順に並べ、上位だけ残す（遅いサンプルは行き帰りが偏りやすい）
+  S.samples.sort((a, b) => a.rtt - b.rtt);
+  if (S.samples.length > SYNC_KEEP) S.samples.length = SYNC_KEEP;
+
+  const use = S.samples.slice(0, Math.min(SYNC_USE, S.samples.length));
+  const offs = use.map(o => o.offset).sort((a, b) => a - b);
+  S.offset  = offs[(offs.length / 2) | 0];               // 中央値：外れ値に強い
+  S.bestRtt = use[0].rtt;
+  // ばらつき（推定のブレ幅）を精度の目安にする
+  S.syncErr = offs.length >= 3 ? (offs[offs.length - 1] - offs[0]) / 2 : null;
+  S.synced  = S.samples.length >= SYNC_MIN_SAMPLES;
+
   if (S.screen === 'lobby') renderLobby();
 }
+
 function syncQuality() {
-  if (S.isHost) return { label: '基準端末', cls: 'ok' };
-  if (!isFinite(S.bestRtt)) return { label: '計測中…', cls: 'wait' };
-  const ms = Math.round(S.bestRtt / 2);
-  if (ms <= 30)  return { label: '±' + ms + 'ms／優秀', cls: 'ok' };
-  if (ms <= 60)  return { label: '±' + ms + 'ms／問題なし', cls: 'ok' };
-  if (ms <= 120) return { label: '±' + ms + 'ms／やや不安', cls: 'warn' };
-  return { label: '±' + ms + 'ms／要改善', cls: 'ng' };
+  if (S.isHost) return { label: '基準端末', cls: 'ok', ready: true };
+  const n = S.samples.length;
+  if (n < 3) return { label: '計測中… (' + n + '/' + SYNC_MIN_SAMPLES + ')', cls: 'wait', ready: false };
+  const e = S.syncErr == null ? null : Math.round(S.syncErr);
+  const ready = n >= SYNC_MIN_SAMPLES;
+  const tail = ready ? '' : '（計測中 ' + n + '/' + SYNC_MIN_SAMPLES + '）';
+  if (e == null)  return { label: '計測中…' + tail, cls: 'wait', ready };
+  if (e <= 15) return { label: '±' + e + 'ms／とても正確' + tail, cls: 'ok', ready };
+  if (e <= 40) return { label: '±' + e + 'ms／問題なし' + tail, cls: 'ok', ready };
+  if (e <= 90) return { label: '±' + e + 'ms／遊べます' + tail, cls: 'warn', ready };
+  return { label: '±' + e + 'ms／ブレ大きめ' + tail, cls: 'ng', ready };
 }
 
 /* =========================================================
@@ -484,11 +523,16 @@ function renderLobby() {
     div.className = 'pcard' + (p ? '' : ' empty') + (p && p.id === S.me.id ? ' me' : '');
     div.style.setProperty('--c', c.hex);
     if (p) {
-      const okSync = p.id === S.me.id ? (S.isHost || S.synced) : !!(S.presence.get(p.id) || {}).synced;
+      const pr = p.id === S.me.id
+        ? { synced: S.isHost || S.synced, err: S.isHost ? 0 : S.syncErr, ns: S.samples.length }
+        : (S.presence.get(p.id) || {});
+      const okSync = !!pr.synced;
+      const errTxt = p.id === S.me.id && S.isHost ? '基準'
+        : (pr.err == null ? '' : '±' + Math.round(pr.err) + 'ms');
       div.innerHTML =
         '<div class="pdot"></div>' +
         '<div class="pname">' + escapeHtml(p.name) + (p.id === S.me.id ? '<span class="youtag">あなた</span>' : '') + '</div>' +
-        '<div class="pmeta">' + c.name + ' / ' + (okSync ? '同期OK' : '同期中…') + '</div>';
+        '<div class="pmeta">' + (okSync ? (errTxt || '同期OK') : '同期中…') + '</div>';
     } else {
       div.innerHTML = '<div class="pdot"></div><div class="pname">空き</div><div class="pmeta">参加待ち</div>';
     }
@@ -500,14 +544,20 @@ function renderLobby() {
   if (S.isHost) {
     btn.style.display = '';
     const allSynced = S.roster.every(p => p.id === S.me.id || (S.presence.get(p.id) || {}).synced);
+    const worstErr = S.roster.reduce((mx, p) => {
+      if (p.id === S.me.id) return mx;
+      const e = (S.presence.get(p.id) || {}).err;
+      return e == null ? mx : Math.max(mx, e);
+    }, 0);
     const vs = S.play === 'versus';
     let ok = allSynced, note = '';
-    if (!allSynced) note = '同期が終わるまで待ってください';
+    if (!allSynced) note = '全員の計測が終わるまで数秒待ってください';
     else if (vs && n < 2) { ok = false; note = '対戦は2人から。あと1人呼んでください'; }
     else if (vs && n % 2 !== 0) { ok = false; note = '対戦は偶数人数で（いま' + n + '人）'; }
     else if (vs) note = (n / 2) + '対' + (n / 2) + '。相手はランダムで決まります';
     else note = n === 1 ? '1人でも遊べます。あと' + (MAX_PLAYERS - n) + '人まで参加できます'
                         : 'あと' + (MAX_PLAYERS - n) + '人まで参加できます';
+    if (ok && worstErr > 90) note = 'ズレ大きめ（±' + Math.round(worstErr) + 'ms）。遊べますが判定が甘くなります';
     btn.disabled = !ok;
     btn.textContent = vs ? (n >= 2 && n % 2 === 0 ? (n / 2) + '対' + (n / 2) + 'で開始' : '対戦で開始')
                          : n + '人で開始する';
@@ -557,7 +607,7 @@ function onCtrl(m) {
     S.me.idx = me ? me.idx : -1;
     renderLobby();
   } else if (m.type === 'start') {
-    startGame(m.seed, m.startAt, m.roster, m.play, m.speed, m.vs);
+    startGame(m.seed, m.startAt, m.roster, m.play, m.speed, m.vs, m.judgeWait);
   } else if (m.type === 'result') {
     applyResult(m);
   } else if (m.type === 'gameover') {
@@ -569,16 +619,24 @@ function onCtrl(m) {
 
 function hostStart() {
   const seed = (Math.random() * 0xffffffff) >>> 0;
-  const startAt = now() + 1200;
   const n = S.roster.length;
+  // いちばん遅い端末の往復時間を見て、開始の余裕と判定の締め切りを決める
+  let maxRtt = 0;
+  S.roster.forEach(p => {
+    if (p.id === S.me.id) return;
+    const r = (S.presence.get(p.id) || {}).rtt;
+    if (r && r > maxRtt) maxRtt = r;
+  });
+  const judgeWait = clamp(JUDGE_DELAY + maxRtt, JUDGE_DELAY, 2200);
+  const startAt = now() + 1200 + Math.min(maxRtt, 1500);
   const vs = S.play === 'versus' ? buildVersus(n) : null;
   const payload = { type: 'start', seed, startAt, roster: S.roster,
-                    play: S.play, speed: S.speed, vs };
+                    play: S.play, speed: S.speed, vs, judgeWait };
   pub('ctrl', payload);
-  startGame(seed, startAt, S.roster, S.play, S.speed, vs);
+  startGame(seed, startAt, S.roster, S.play, S.speed, vs, judgeWait);
 }
 
-function startGame(seed, startAtHost, roster, playKey, speedKey, vsSetup) {
+function startGame(seed, startAtHost, roster, playKey, speedKey, vsSetup, judgeWait) {
   const PL = PLAYS[playKey] || PLAYS.coop;
   const SP = SPEEDS[speedKey] || SPEEDS.normal;
   S.roster = roster || S.roster;
@@ -595,6 +653,7 @@ function startGame(seed, startAtHost, roster, playKey, speedKey, vsSetup) {
 
   S.game = {
     seed, startAtHost, at, PL, SP, play: PL.key,
+    judgeWait: clamp(judgeWait || JUDGE_DELAY, JUDGE_DELAY, 2200),
     lv: (i) => SP.lv0 + i,
     n,
     lives: SP.lives, combo: 0, maxCombo: 0, score: 0,
@@ -780,7 +839,7 @@ function onInput(m) {
 function hostJudgeTick(rel) {
   const g = S.game;
   for (let r = g.judged + 1; r < MAX_ROUNDS; r++) {
-    if (rel < g.at[r] + JUDGE_DELAY) break;
+    if (rel < g.at[r] + g.judgeWait) break;
     g.judged = r;
     judgeRound(r);
     if (g.over) break;
@@ -799,7 +858,7 @@ function judgeRound(r) {
   S.roster.forEach(p => { byPlayer[p.id] = null; });
   items.forEach(it => {
     const d = it.t - target;
-    if (d < -GUARD_PRE || d > GUARD_POST + W) return;
+    if (d < -GUARD_PRE || d > GUARD_POST + W) return;   // 押した時刻で判定（届いた時刻ではない）
     const cur = byPlayer[it.id];
     if (!cur || Math.abs(d) < Math.abs(cur.d)) byPlayer[it.id] = { d, act: it.act, dir: it.dir };
   });
@@ -1411,6 +1470,7 @@ function registerSW() {
 function boot() {
   const params = new URLSearchParams(location.search);
   if (params.get('b')) BROKERS.unshift({ label: 'LOCAL', url: params.get('b') });
+  LAG = Math.max(0, Math.min(2000, +(params.get('lag') || 0)));
 
   const savedName = localStorage.getItem('st_name') || '';
   $('#in-name').value = params.get('name') || savedName || '';
@@ -1437,6 +1497,7 @@ function boot() {
   });
   $('#btn-start').addEventListener('click', hostStart);
   $('#btn-leave').addEventListener('click', () => leaveRoom());
+  $('#btn-resync').addEventListener('click', () => { resetSync(); toast('もう一度、時計を測り直します'); });
   $('#btn-home').addEventListener('click', () => leaveRoom());
   $('#btn-again').addEventListener('click', () => {
     S.game = null; lastRenderRound = -1; tickedFor = -1;
