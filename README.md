@@ -56,5 +56,5 @@ node dev/make-icons.js         # アイコン再生成
 
 ## デプロイ
 
-GitHubにpushするとVercelが自動で反映する。URLは変わらないので、
+GitHubにpushするとVercelが自動で反映する。公開URLは https://seno-game.vercel.app （旧 synctap.vercel.app も有効）。URLは変わらないので、
 ホーム画面に追加済みの端末もそのまま最新版になる。
