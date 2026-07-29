@@ -2,15 +2,15 @@
 const { chromium } = require('playwright');
 
 const BASE = (process.env.DIST ? 'http://localhost:8080/dist/index.html' : 'http://localhost:8080/') + '?b=ws://localhost:9001';
-const NAMES = ['てつじん', 'なかま1', 'なかま2'];
+const N = Math.max(1, Math.min(10, +(process.env.PLAYERS || 3)));
+const NAMES = Array.from({length: N}, (_, i) => i === 0 ? 'てつじん' : 'なかま' + i);
 
 // 端末ごとの「腕前」：目標時刻からのズレ(ms) の平均と ばらつき
 const J = +(process.env.J || 1);   // 1=上手い3人 / 2=ふつうの3人
-const SKILL = [
-  { bias: 5,   jitter: 35 * J },
-  { bias: -20, jitter: 45 * J },
-  { bias: 30,  jitter: 60 * J },
-];
+const SKILL = Array.from({ length: N }, (_, i) => ({
+  bias: [5, -20, 30, -8, 18, -30, 42, 0, -14, 26][i % 10],
+  jitter: [35, 45, 60, 40, 52, 38, 70, 48, 55, 44][i % 10] * J,
+}));
 
 const AUTOPLAY = ({ bias, jitter }) => {
   const A = window.__SYNCTAP;
@@ -67,7 +67,7 @@ const AUTOPLAY = ({ bias, jitter }) => {
 (async () => {
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--autoplay-policy=no-user-gesture-required'] });
   const pages = [];
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < N; i++) {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
     const pg = await ctx.newPage();
     pg.on('pageerror', e => console.log('  [JS ERROR p' + i + '] ' + e.message));
@@ -84,10 +84,10 @@ const AUTOPLAY = ({ bias, jitter }) => {
   await pages[0].click('#btn-create');
   await wait(600);
   const code = await pages[0].textContent('#lobby-code');
-  console.log('room code =', code);
+  console.log('players =', N, '/ room code =', code);
 
   // 残り2人が参加
-  for (let i = 1; i < 3; i++) {
+  for (let i = 1; i < N; i++) {
     await pages[i].fill('#in-name', NAMES[i]);
     await pages[i].fill('#in-code', code);
     await pages[i].click('#btn-join');
@@ -96,7 +96,7 @@ const AUTOPLAY = ({ bias, jitter }) => {
 
   // 同期が安定するまで待つ
   await wait(4000);
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < N; i++) {
     const q = await pages[i].textContent('#sync-q');
     const st = await pages[i].evaluate(() => {
       const S = window.__SYNCTAP.S;
@@ -115,7 +115,7 @@ const AUTOPLAY = ({ bias, jitter }) => {
   }
 
   // 自動プレイを仕込む
-  for (let i = 0; i < 3; i++) await pages[i].evaluate(AUTOPLAY, SKILL[i]);
+  for (let i = 0; i < N; i++) await pages[i].evaluate(AUTOPLAY, SKILL[i]);
 
   // 開始
   const startBtn = await pages[0].isEnabled('#btn-start');
@@ -125,7 +125,7 @@ const AUTOPLAY = ({ bias, jitter }) => {
   // プレイ中の様子
   await wait(5000);
   await pages[0].screenshot({ path: 'shot-play.png' });
-  await pages[1].screenshot({ path: 'shot-play2.png' });
+  if (pages[1]) await pages[1].screenshot({ path: 'shot-play2.png' });
 
   // 終了まで待つ
   for (let t = 0; t < 90; t++) {
@@ -142,12 +142,28 @@ const AUTOPLAY = ({ bias, jitter }) => {
   console.log('screen:', res.screen);
   if (res.r) {
     console.log('rounds:', res.r.round, 'score:', res.r.score, 'maxCombo:', res.r.maxCombo, 'speed:', res.r.speed);
-    console.log('accuracy:', JSON.stringify(res.r.acc));
+    console.log('stats  :', JSON.stringify(res.r.stats));
   }
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < N; i++) {
     const log = await pages[i].evaluate(() => window.__log.length);
     console.log(`p${i} actions fired: ${log}`);
   }
+  // 成績表・MVP・辛口コメントが出ているか
+  const board = await pages[0].evaluate(() => ({
+    rows: Array.from(document.querySelectorAll('#r-acc .sbrow')).map(r => ({
+      name: r.querySelector('.sbname').textContent.trim(),
+      p: r.querySelector('.np').textContent,
+      g: r.querySelector('.ng').textContent,
+      m: r.querySelector('.nm').textContent,
+      mvp: r.classList.contains('is-mvp'), worst: r.classList.contains('is-worst'),
+    })),
+    mvp: document.querySelector('#r-mvp').textContent,
+    roast: document.querySelector('#r-roast').textContent,
+  }));
+  console.log('\n--- 成績表 ---');
+  board.rows.forEach(r => console.log(`  ${r.mvp ? 'MVP ' : r.worst ? 'WST ' : '    '}${r.name}  P:${r.p} G:${r.g} M:${r.m}`));
+  console.log('MVP  :', board.mvp);
+  console.log('ROAST:', board.roast);
   await pages[0].screenshot({ path: 'shot-result.png' });
 
   // --- 2回戦が成立するか ---
@@ -158,7 +174,7 @@ const AUTOPLAY = ({ bias, jitter }) => {
   console.log('start enabled:', await pages[0].isEnabled('#btn-start'));
   await pages[0].click('#btn-start');
   await wait(6000);
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < N; i++) {
     const st = await pages[i].evaluate(() => {
       const S = window.__SYNCTAP.S;
       return { screen: S.screen, round: S.game ? S.game.round : null, lives: S.game ? S.game.lives : null };

@@ -1,22 +1,30 @@
 /* =========================================================
    シンクロ・タップ  /  SYNC TAP
-   3人同室・各自スマホ・リアルタイム同期タップゲーム
+   3〜10人が同室・各自スマホ・リアルタイム同期タップゲーム
    ========================================================= */
 
 /* ---------- 定数 ---------- */
 const VERSION = 'v1.0';
-const BUILD   = '2026-07-29 21:10';   // 更新したらここも変える（タイトル画面下に出る）
+const BUILD   = '2026-07-29 22:10';   // 更新したらここも変える（タイトル画面下に出る）
 const BROKERS = [
   { label: 'A',  url: 'wss://broker.emqx.io:8084/mqtt' },
   { label: 'B',  url: 'wss://broker.hivemq.com:8884/mqtt' },
   { label: 'C',  url: 'wss://test.mosquitto.org:8081/mqtt' },
 ];
 const COLORS = [
-  { key: 'R', name: 'レッド',  hex: '#ff3d6b' },
-  { key: 'B', name: 'ブルー',  hex: '#4dabff' },
-  { key: 'Y', name: 'イエロー', hex: '#ffd23f' },
+  { name: 'レッド',    hex: '#ff3d6b' },
+  { name: 'ブルー',    hex: '#4dabff' },
+  { name: 'イエロー',  hex: '#ffd23f' },
+  { name: 'グリーン',  hex: '#39d98a' },
+  { name: 'パープル',  hex: '#b04dff' },
+  { name: 'オレンジ',  hex: '#ff8a3d' },
+  { name: 'シアン',    hex: '#2ee6d6' },
+  { name: 'マゼンタ',  hex: '#ff5edb' },
+  { name: 'ライム',    hex: '#a3e635' },
+  { name: 'ラベンダー', hex: '#8b9dff' },
 ];
-const MAX_PLAYERS = 3;
+const MAX_PLAYERS = 10;
+const MIN_PLAYERS = 1;   // 動作確認用に1人でも開始できる
 
 /* モード：lv0 が大きいほど最初から速く・判定も厳しい */
 const MODES = {
@@ -25,7 +33,10 @@ const MODES = {
 };
 
 const WIN_BASE    = 200;  // 成功と認める最大ズレ(ms)：レベルが上がるほど狭くなる
-const WIN_OF      = (lv) => Math.max(85, Math.round(WIN_BASE - 2.2 * lv));
+// 人数が増えるほど「全員そろう」難易度が跳ね上がるので、その分だけ判定を広げる
+const WIN_OF      = (lv, n) => Math.round(
+  Math.max(85, WIN_BASE - 2.2 * lv) * (1 + 0.045 * Math.max(0, (n || 3) - 3))
+);
 const GUARD_PRE   = 700;  // 「さわるな」系の禁止区間 開始(ms前)
 const GUARD_POST  = 300;  // 同 終了(ms後)
 const JUDGE_DELAY = 380;  // ラウンド判定を確定させるまでの猶予(ms)
@@ -436,11 +447,16 @@ function renderLobby() {
   sq.textContent = q.label;
   sq.className = 'syncq ' + q.cls;
 
+  const n = S.roster.length;
+  $('#player-count').textContent = n + ' / ' + MAX_PLAYERS + '人';
+
   const list = $('#player-list');
   list.innerHTML = '';
-  for (let i = 0; i < MAX_PLAYERS; i++) {
+  // 参加済み全員 ＋ 空きが残っていれば1行だけ
+  const rows = n < MAX_PLAYERS ? n + 1 : n;
+  for (let i = 0; i < rows; i++) {
     const p = S.roster[i];
-    const c = COLORS[i];
+    const c = COLORS[i % COLORS.length];
     const div = document.createElement('div');
     div.className = 'pcard' + (p ? '' : ' empty') + (p && p.id === S.me.id ? ' me' : '');
     div.style.setProperty('--c', c.hex);
@@ -460,13 +476,13 @@ function renderLobby() {
   const btn = $('#btn-start');
   if (S.isHost) {
     btn.style.display = '';
-    const n = S.roster.length;
     const allSynced = S.roster.every(p => p.id === S.me.id || (S.presence.get(p.id) || {}).synced);
-    btn.disabled = !(n >= 1 && allSynced);
-    btn.textContent = n >= MAX_PLAYERS ? 'ゲーム開始' : (n + '人で開始する');
+    btn.disabled = !(n >= MIN_PLAYERS && allSynced);
+    btn.textContent = n + '人で開始する';
     btn.className = S.mode === 'oni' ? 'hot' : '';
     $('#host-note').textContent = !allSynced ? '同期が終わるまで待ってください'
-      : (n < MAX_PLAYERS ? '※ ' + n + '人でも開始できます（動作確認用）' : '全員そろいました');
+      : (n < 3 ? '※ ' + n + '人でも開始できます（動作確認用）'
+               : 'あと' + (MAX_PLAYERS - n) + '人まで参加できます');
   } else {
     btn.style.display = 'none';
     $('#host-note').textContent = 'ホストの開始を待っています…';
@@ -526,15 +542,16 @@ function startGame(seed, startAtHost, roster, modeKey) {
     n: S.roster.length,
     lives: M.lives, combo: 0, maxCombo: 0, score: 0,
     round: 0, over: false, armed: -1,
-    localVerdict: {}, inbox: {}, judged: -1, acc: {},
+    localVerdict: {}, inbox: {}, judged: -1, stats: {},
   };
-  S.roster.forEach(p => { S.game.acc[p.id] = { sum: 0, n: 0 }; });
+  // ひとりずつの PERFECT / GOOD / ミス の回数
+  S.roster.forEach(p => { S.game.stats[p.id] = { p: 0, g: 0, m: 0 }; });
 
   lastRenderRound = -1; tickedFor = -1;
   initAudio(); calibrateAudio();
   requestWakeLock();
 
-  $('#play-root').style.setProperty('--me', COLORS[Math.max(0, S.me.idx)].hex);
+  $('#play-root').style.setProperty('--me', COLORS[Math.max(0, S.me.idx) % COLORS.length].hex);
   $('#play-root').classList.remove('fever');
   $('#hud-mode').textContent = M.label;
   $('#combo').classList.add('hidden');
@@ -599,7 +616,7 @@ function fireAction(act, dir, tLocal) {
   const g = S.game, round = input.round;
   const tH = toHost(tLocal);
   const delta = tH - (g.startAtHost + g.at[round]);
-  const W = WIN_OF(g.lv(round));
+  const W = WIN_OF(g.lv(round), g.n);
   const ins = instructionOf(g.seed, round, g.n, g.M.tutorial);
 
   let label = '', cls = '';
@@ -678,7 +695,7 @@ function judgeRound(r) {
   const ins = instructionOf(g.seed, r, g.n, g.M.tutorial);
   const items = g.inbox[r] || [];
   const target = g.startAtHost + g.at[r];
-  const W = WIN_OF(g.lv(r));
+  const W = WIN_OF(g.lv(r), g.n);
 
   const byPlayer = {};
   S.roster.forEach(p => { byPlayer[p.id] = null; });
@@ -698,18 +715,24 @@ function judgeRound(r) {
       ins.type === 'SWIPE'    ? 'swipe' :
       ins.type === 'SOLO_TAP' ? (ins.who === p.idx ? 'tap' : 'none') : 'none';
 
-    let good;
+    let good, bucket;
     if (mustAct === 'none') {
-      good = !a; detail[p.id] = good ? 'held' : 'touched';
+      good = !a;
+      detail[p.id] = good ? 'held' : 'touched';
+      bucket = good ? 'g' : 'm';          // 触らずに耐えたら GOOD 扱い
     } else if (!a) {
-      good = false; detail[p.id] = 'missed';
+      good = false; detail[p.id] = 'missed'; bucket = 'm';
     } else {
       const timing = Math.abs(a.d) <= W;
       const right  = a.act === mustAct && (mustAct !== 'swipe' || a.dir === ins.dir);
       good = timing && right;
       detail[p.id] = !right ? 'wrong' : (timing ? 'hit' : (a.d < 0 ? 'early' : 'late'));
-      if (good) { worst = Math.max(worst, Math.abs(a.d)); acted++; g.acc[p.id].sum += Math.abs(a.d); g.acc[p.id].n++; }
+      if (good) {
+        worst = Math.max(worst, Math.abs(a.d)); acted++;
+        bucket = Math.abs(a.d) <= W * 0.33 ? 'p' : 'g';
+      } else bucket = 'm';
     }
+    if (g.stats[p.id]) g.stats[p.id][bucket]++;
     if (!good) ok = false;
   });
 
@@ -738,10 +761,8 @@ function judgeRound(r) {
   applyResult(payload);
 
   if (g.lives <= 0 && !g.over) {
-    const acc = {};
-    S.roster.forEach(p => { const a = g.acc[p.id]; acc[p.id] = a.n ? Math.round(a.sum / a.n) : null; });
     const over = { type: 'gameover', round: r + 1, score: g.score, maxCombo: g.maxCombo,
-                   speed: SPEED_OF(g.lv(r)), acc, roster: S.roster, mode: g.M.key };
+                   speed: SPEED_OF(g.lv(r)), stats: g.stats, roster: S.roster, mode: g.M.key };
     pub('ctrl', over);
     endGame(over);
   }
@@ -861,14 +882,18 @@ function renderPlay(round, ins, prog, remain) {
     lastRenderRound = round;
     const box = $('#instr');
     let main = '', sub = '', cls = '';
-    if (ins.type === 'ALL_TAP')      { main = 'タップ';   sub = '3人いっせいに'; cls = 'i-all'; }
+    const all = g.n + '人いっせいに';
+    if (ins.type === 'ALL_TAP')      { main = 'タップ';   sub = all; cls = 'i-all'; }
     else if (ins.type === 'NO_TAP')  { main = 'さわるな'; sub = '手を離して待つ'; cls = 'i-no'; }
     else if (ins.type === 'SWIPE')   {
       const d = DIRS.find(x => x.key === ins.dir);
-      main = d.label; sub = '3人いっせいに' + d.jp + 'へスワイプ'; cls = 'i-swipe';
+      main = d.label; sub = all + d.jp + 'へスワイプ'; cls = 'i-swipe';
     } else if (ins.type === 'SOLO_TAP') {
       if (ins.who === myIdx) { main = 'あなただけ'; sub = 'あなたがタップ／他は触るな'; cls = 'i-solo-me'; }
-      else { main = 'さわるな'; sub = COLORS[ins.who].name + 'の番です'; cls = 'i-solo-other'; }
+      else {
+        const who = (S.roster[ins.who] || {}).name || (COLORS[ins.who % COLORS.length] || {}).name || '誰か';
+        main = 'さわるな'; sub = escapeHtml(who) + 'の番です'; cls = 'i-solo-other';
+      }
     }
     box.className = 'instr ' + cls;
     void box.offsetWidth;
@@ -906,6 +931,68 @@ function rankOf(rounds, modeKey) {
   return 'D';
 }
 
+/* 最下位に贈る辛口コメント。全端末で同じ文が出るよう、結果から決定論的に選ぶ */
+const ROASTS = [
+  (n, s) => n + '、今日は見学でよかったんじゃない？',
+  (n, s) => n + 'のせいで負けた、とまでは言わない。数字がもう言ってる。',
+  (n, s) => n + '、指と脳が別々の県に住んでる。',
+  (n, s) => n + 'がひとりで' + s.m + '回止めた。これチーム戦なんだけど。',
+  (n, s) => n + '、次からは心の中でタップして。',
+  (n, s) => n + '、リズム感、家に忘れてきてない？',
+  (n, s) => n + '、そのタイミングでいけると思った理由を聞きたい。',
+  (n, s) => n + 'がいなければ、あと何ラウンド進めたんだろうね。',
+  (n, s) => n + '、練習より先に反省だと思う。',
+  (n, s) => n + '、参加してくれてありがとう。本当にそれだけ。',
+  (n, s) => n + 'のミス' + s.m + '回。もう妨害の域。',
+  (n, s) => n + '、全員の足を' + s.m + '回引っ張った記録、残しておくね。',
+];
+function roastFor(name, s, round) {
+  if (s.p === 0 && s.m > 0) return name + '、PERFECTが1回も出ていません。0回です。';
+  if (s.m === 0) return name + '、悪くはない。ただ全員の中では最下位。';
+  const i = (round * 7 + s.m * 13 + s.p * 3 + s.g) % ROASTS.length;
+  return ROASTS[i](name, s);
+}
+
+/* ひとりずつの成績表：PERFECT / GOOD / ミス の回数と、MVP・最下位 */
+function renderScoreboard(m) {
+  const roster = m.roster || S.roster;
+  const stats  = m.stats || {};
+  const rows = roster.map(p => {
+    const s = stats[p.id] || { p: 0, g: 0, m: 0 };
+    return { p, s, pt: s.p * 3 + s.g - s.m * 2 };
+  });
+  const ranked = rows.slice().sort((a, b) => b.pt - a.pt || b.s.p - a.s.p || a.s.m - b.s.m);
+  const mvp   = ranked.length >= 2 ? ranked[0] : null;
+  const worst = ranked.length >= 2 ? ranked[ranked.length - 1] : null;
+
+  const wrap = $('#r-acc');
+  wrap.innerHTML = '';
+  ranked.forEach((row) => {
+    const c = COLORS[row.p.idx % COLORS.length] || COLORS[0];
+    const el = document.createElement('div');
+    el.className = 'sbrow' + (mvp && row === mvp ? ' is-mvp' : '') + (worst && row === worst ? ' is-worst' : '');
+    el.style.setProperty('--c', c.hex);
+    el.innerHTML =
+      '<div class="sbname"><i></i>' + escapeHtml(row.p.name) +
+        (mvp && row === mvp ? '<span class="badge mvp">MVP</span>' : '') + '</div>' +
+      '<div class="sbn np">' + row.s.p + '</div>' +
+      '<div class="sbn ng">' + row.s.g + '</div>' +
+      '<div class="sbn nm">' + row.s.m + '</div>';
+    wrap.appendChild(el);
+  });
+
+  $('#r-mvp').textContent = mvp
+    ? 'MVP は ' + mvp.p.name + '。PERFECT ' + mvp.s.p + '回で、いちばんチームを引っ張った。'
+    : '';
+  const roastEl = $('#r-roast');
+  if (worst && worst !== mvp) {
+    roastEl.style.display = '';
+    roastEl.textContent = '「' + roastFor(worst.p.name, worst.s, m.round) + '」';
+  } else {
+    roastEl.style.display = 'none';
+  }
+}
+
 function endGame(m) {
   if (!S.game) return;
   S.game.over = true;
@@ -932,26 +1019,7 @@ function endGame(m) {
   };
   tickUp();
 
-  const wrap = $('#r-acc');
-  wrap.innerHTML = '';
-  (m.roster || S.roster).forEach(p => {
-    const ms = (m.acc || {})[p.id];
-    const c = COLORS[p.idx] || COLORS[0];
-    const row = document.createElement('div');
-    row.className = 'accrow';
-    row.style.setProperty('--c', c.hex);
-    const w = ms == null ? 0 : clamp(100 - (ms / WIN_BASE) * 100, 4, 100);
-    row.innerHTML =
-      '<div class="accname">' + escapeHtml(p.name) + '</div>' +
-      '<div class="accbar"><i style="width:' + w + '%"></i></div>' +
-      '<div class="accms">' + (ms == null ? '—' : '±' + ms + 'ms') + '</div>';
-    wrap.appendChild(row);
-  });
-
-  const best = (m.roster || S.roster)
-    .map(p => ({ p, ms: (m.acc || {})[p.id] }))
-    .filter(x => x.ms != null).sort((a, b) => a.ms - b.ms)[0];
-  $('#r-mvp').textContent = best ? '今日いちばん正確だったのは ' + best.p.name + '（±' + best.ms + 'ms）' : '';
+  renderScoreboard(m);
 
   // ランクが高いほど派手に祝う
   const big = rank === 'S+' || rank === 'S' || rank === 'A';

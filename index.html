@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="シンクロタップ">
-<meta name="description" content="3人が同じ部屋で、いっせーので合わせるパーティゲーム">
+<meta name="description" content="3〜10人が同じ部屋で、いっせーので合わせるパーティゲーム">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
 <link rel="icon" href="./icons/favicon.png">
@@ -223,14 +223,24 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
 .rcell{background:#0e1124;border:1px solid #1b2145;border-radius:15px;padding:15px;text-align:center}
 .rcell b{display:block;font-size:29px;font-weight:900;font-variant-numeric:tabular-nums}
 .rcell span{font-size:9.5px;color:var(--dim);letter-spacing:.16em}
-.accrow{display:grid;grid-template-columns:74px 1fr 60px;align-items:center;gap:10px;margin:10px 0;font-size:12px}
-.accbar{height:10px;background:#151a38;border-radius:999px;overflow:hidden}
-.accbar i{display:block;height:100%;background:var(--c);border-radius:999px;
-  box-shadow:0 0 12px var(--c);animation:grow .8s cubic-bezier(.2,1,.3,1)}
-@keyframes grow{from{width:0}}
-.accms{text-align:right;color:var(--dim);font-variant-numeric:tabular-nums}
-.accname{font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#r-mvp{text-align:center;font-size:12.5px;color:var(--gold);margin-top:14px;min-height:18px}
+/* 成績表 */
+.sbhead,.sbrow{display:grid;grid-template-columns:1fr 52px 52px 52px;align-items:center;gap:6px}
+.sbhead{padding:0 12px 7px;font-size:8.5px;letter-spacing:.1em;color:var(--dim)}
+.sbhead b{text-align:center;font-weight:800}
+.sbhead .np{color:var(--gold)}.sbhead .ng{color:var(--ok)}.sbhead .nm{color:var(--ng)}
+.sbrow{padding:12px;border-radius:13px;background:#0e1124;border:1px solid #1b2145;margin-bottom:8px}
+.sbrow.is-mvp{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold),0 0 26px -8px var(--gold)}
+.sbrow.is-worst{border-color:#4a1b2c}
+.sbname{display:flex;align-items:center;gap:9px;font-weight:800;font-size:14px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sbname i{width:11px;height:11px;border-radius:50%;background:var(--c);flex:0 0 auto;box-shadow:0 0 12px var(--c)}
+.badge.mvp{font-size:9px;font-weight:900;letter-spacing:.12em;background:var(--gold);color:#3a2a00;
+  padding:3px 7px;border-radius:6px;flex:0 0 auto}
+.sbn{text-align:center;font-size:19px;font-weight:900;font-variant-numeric:tabular-nums}
+.sbn.np{color:var(--gold)}.sbn.ng{color:var(--ok)}.sbn.nm{color:var(--ng)}
+#r-mvp{text-align:center;font-size:13px;color:var(--gold);margin-top:6px;min-height:18px;line-height:1.7;font-weight:700}
+#r-roast{margin-top:12px;padding:14px 16px;border-radius:13px;background:#25101a;
+  border:1px solid #4a1b2c;color:#ff9fb3;font-size:13px;line-height:1.8;text-align:center;font-weight:700}
 </style>
 </head>
 <body>
@@ -246,11 +256,11 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
       <div class="orbs"><i></i><i></i><i></i></div>
       <div class="kicker">SYNC TAP</div>
       <h1>シンクロ・タップ</h1>
-      <p class="tag">3人、いっせーの。</p>
+      <p class="tag">みんなで、いっせーの。</p>
     </div>
 
     <div class="rules">
-      <div><b>3</b>人で<br>同じ部屋</div>
+      <div><b>3-10</b>人で<br>同じ部屋</div>
       <div><b>1</b>人でも<br>ズレたら失敗</div>
       <div><b>∞</b>どんどん<br>速くなる</div>
     </div>
@@ -277,7 +287,7 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
 
     <div class="spacer"></div>
     <div class="foot">
-      ホストが1台でルームを作り、出た4桁を残り2人が入力します。<br>
+      ホストが1台でルームを作り、出た4桁を参加者が入力します。<br>
       <span id="a2hs">共有メニューの「ホーム画面に追加」でアプリになります。</span><br>
       <span id="build-stamp"></span>
     </div>
@@ -289,7 +299,7 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
   <div class="aurora" style="opacity:.32"><i></i><i></i><i></i></div>
   <div class="wrap">
     <h2>メンバーを待っています</h2>
-    <p class="lead" style="margin-bottom:14px">この4桁を、残りの2人に伝えてください。</p>
+    <p class="lead" style="margin-bottom:14px">この4桁を、参加する人に伝えてください。</p>
 
     <div class="codebox">
       <div class="lbl">ROOM CODE</div>
@@ -300,7 +310,10 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
     <div class="sect">時計のズレ（小さいほど公平に判定できます）</div>
     <div class="syncq wait" id="sync-q">計測中…</div>
 
-    <div class="sect">メンバー</div>
+    <div class="sect" style="display:flex;align-items:baseline">
+      <span>メンバー</span>
+      <span id="player-count" style="margin-left:auto;color:var(--fg);letter-spacing:.06em">0 / 10人</span>
+    </div>
     <div id="player-list"></div>
 
     <div id="mode-block">
@@ -376,9 +389,15 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
       <div class="rcell"><b id="r-speed">0</b><span>FINAL SPEED</span></div>
     </div>
 
-    <div class="sect">ひとりずつの平均ズレ</div>
-    <div id="r-acc"></div>
     <div id="r-mvp"></div>
+    <div id="r-roast"></div>
+
+    <div class="sect">ひとりずつの成績</div>
+    <div class="sbhead">
+      <span>プレイヤー</span>
+      <b class="np">PERFECT</b><b class="ng">GOOD</b><b class="nm">MISS</b>
+    </div>
+    <div id="r-acc"></div>
 
     <div class="spacer"></div>
     <button id="btn-again">もう一度</button>
