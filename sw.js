@@ -1,9 +1,9 @@
-/* シンクロ・タップ Service Worker
+/* セーノ！ Service Worker
    方針：常にネットワークを先に見る（network-first）。
    → こちらでコードを更新したら、次に開いた時に必ず最新版になる。
      オフライン時だけキャッシュから出すので、電波が悪くても起動はする。 */
 
-const CACHE = 'synctap-v2';
+const CACHE = 'synctap-v3';
 const ASSETS = [
   './',
   './index.html',
