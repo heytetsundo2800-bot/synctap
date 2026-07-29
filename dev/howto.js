@@ -7,8 +7,11 @@ const BASE = 'http://localhost:8080/?b=ws://localhost:9001';
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
   const pg = await ctx.newPage();
   pg.on('pageerror', e => console.log('  [JS ERROR] ' + e.message));
-  await pg.goto(BASE);
   const wait = ms => new Promise(r => setTimeout(r, ms));
+  await pg.goto(BASE);
+  // 「ホーム画面に追加」の案内はここでは邪魔なので、済みにしておく
+  await pg.evaluate(() => localStorage.setItem('st_a2hs', 'done'));
+  await pg.reload();
   await wait(800);
 
   const vis = () => pg.evaluate(() => document.querySelector('#howto').classList.contains('on'));

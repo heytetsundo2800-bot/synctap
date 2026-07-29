@@ -5,7 +5,7 @@
 
 /* ---------- 定数 ---------- */
 const VERSION = 'v1.0';
-const BUILD   = '2026-07-30 21:40';   // 更新したらここも変える（タイトル画面下に出る）
+const BUILD   = '2026-07-30 23:05';   // 更新したらここも変える（タイトル画面下に出る）
 const BROKERS = [
   { label: 'A',  url: 'wss://broker.emqx.io:8084/mqtt' },
   { label: 'B',  url: 'wss://broker.hivemq.com:8884/mqtt' },
@@ -1731,6 +1731,8 @@ function closeHowto() {
     localStorage.setItem(HOWTO_KEY, $('#ht-never').checked ? '1' : '0');
   } catch (e) {}
   $('#howto').classList.remove('on');
+  // 続けて「ホーム画面に追加」の案内（必要な人にだけ出る）
+  setTimeout(() => { if (S.screen === 'title') maybeShowAddHome(); }, 260);
 }
 
 function bindHowto() {
@@ -1752,6 +1754,128 @@ function bindHowto() {
 }
 
 /* =========================================================
+   ホーム画面に追加のおすすめ
+
+   共有リンクから初めて来た人に、まず「アプリにする方法」を見せる。
+   端末とブラウザによって手順が違うので、その場に合った案内だけを出す。
+   ========================================================= */
+const A2HS_KEY   = 'st_a2hs';                 // 'done'=もう出さない / 数値=「あとで」を押した時刻
+const A2HS_AGAIN = 7 * 24 * 60 * 60 * 1000;   // 「あとで」なら1週間後にもう一度
+let installPrompt = null;                     // Android/PC の「インストール」イベント
+
+const SHARE_ICON =
+  '<svg width="14" height="16" viewBox="0 0 15 17" fill="none" stroke="#f4ff2b" ' +
+  'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M7.5 1.4v9"/><path d="M4.4 4.3 7.5 1.2 10.6 4.3"/>' +
+  '<path d="M3.6 7.4H2.4v8.2h10.2V7.4h-1.2"/></svg>';
+const DOTS_ICON =
+  '<svg width="5" height="16" viewBox="0 0 5 17" fill="#f4ff2b">' +
+  '<circle cx="2.5" cy="3" r="1.7"/><circle cx="2.5" cy="8.5" r="1.7"/>' +
+  '<circle cx="2.5" cy="14" r="1.7"/></svg>';
+
+function isStandalone() {
+  return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+}
+function platformOf() {
+  const ua = navigator.userAgent;
+  const iOS = /iphone|ipad|ipod/i.test(ua) ||
+              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (iOS) {
+    if (/CriOS/i.test(ua)) return 'ios-chrome';
+    if (/FxiOS|EdgiOS|OPiOS/i.test(ua)) return 'ios-other';
+    return 'ios-safari';
+  }
+  return /android/i.test(ua) ? 'android' : 'pc';
+}
+
+function a2hsSteps() {
+  const p = platformOf();
+  if (installPrompt) {
+    return { main: 'ホーム画面に追加', steps: [
+      'このまま下の<b>「ホーム画面に追加」</b>を押すだけで終わります。',
+      '確認が出たら<b>「インストール」</b>を選んでください。',
+    ], note: 'あとから消したくなったら、普通のアプリと同じ手順で削除できます。' };
+  }
+  if (p === 'ios-safari') {
+    return { main: 'やり方はわかった', steps: [
+      '画面の下（機種によっては上）にある共有ボタン ' + SHARE_ICON + ' をタップ',
+      'メニューを下にスクロールして<b>「ホーム画面に追加」</b>をタップ',
+      '右上の<b>「追加」</b>をタップ。これで完了です',
+    ], note: 'ホーム画面に「せーの!!」のアイコンが増えます。' };
+  }
+  if (p === 'ios-chrome') {
+    return { main: 'やり方はわかった', steps: [
+      '画面右上の共有ボタン ' + SHARE_ICON + ' をタップ',
+      '<b>「ホーム画面に追加」</b>をタップ',
+      '<b>「追加」</b>をタップして完了',
+    ], note: 'うまくいかないときは Safari で開き直すと確実です。' };
+  }
+  if (p === 'ios-other') {
+    return { main: 'やり方はわかった', steps: [
+      'このブラウザではホーム画面に追加できません',
+      'いま開いているURLをコピーして、<b>Safari</b>で開き直してください',
+      'Safariの共有ボタン ' + SHARE_ICON + ' →<b>「ホーム画面に追加」</b>',
+    ], note: 'iPhoneはSafariからだけアプリ化できる仕組みになっています。' };
+  }
+  if (p === 'android') {
+    return { main: 'やり方はわかった', steps: [
+      '画面右上のメニュー ' + DOTS_ICON + ' をタップ',
+      '<b>「アプリをインストール」</b>または<b>「ホーム画面に追加」</b>をタップ',
+      '確認画面で<b>「インストール」</b>をタップ',
+    ], note: 'メニューに出てこないときは、少し遊んでからもう一度開いてみてください。' };
+  }
+  return { main: 'やり方はわかった', steps: [
+    'アドレスバーの右端にある<b>インストールのアイコン</b>をクリック',
+    '出てきた確認で<b>「インストール」</b>をクリック',
+    'デスクトップのアプリとして開けるようになります',
+  ], note: 'Chrome または Edge で使えます。' };
+}
+
+function renderAddHome() {
+  const s = a2hsSteps();
+  $('#ah-steps').innerHTML = s.steps.map((t, i) =>
+    '<div class="ah-step"><div class="ah-num">' + (i + 1) + '</div><div>' + t + '</div></div>').join('') +
+    '<p class="ah-note">' + s.note + '</p>';
+  $('#ah-main').textContent = s.main;
+}
+function openAddHome() { renderAddHome(); $('#addhome').classList.add('on'); }
+function closeAddHome(done) {
+  try { localStorage.setItem(A2HS_KEY, done ? 'done' : String(Date.now())); } catch (e) {}
+  $('#addhome').classList.remove('on');
+}
+function maybeShowAddHome() {
+  if (isStandalone()) return;                       // すでにアプリとして開いている
+  let v = null;
+  try { v = localStorage.getItem(A2HS_KEY); } catch (e) {}
+  if (v === 'done') return;
+  if (v && Date.now() - (+v) < A2HS_AGAIN) return;  // 「あとで」から1週間は出さない
+  openAddHome();
+}
+function bindAddHome() {
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    installPrompt = e;
+    if ($('#addhome').classList.contains('on')) renderAddHome();   // 案内を差し替える
+  });
+  window.addEventListener('appinstalled', () => {
+    installPrompt = null;
+    closeAddHome(true);
+    toast('ホーム画面に追加しました');
+  });
+  $('#ah-main').addEventListener('click', async () => {
+    if (installPrompt) {
+      const p = installPrompt; installPrompt = null;
+      try { p.prompt(); await p.userChoice; } catch (e) {}
+    }
+    closeAddHome(true);
+  });
+  $('#ah-later').addEventListener('click', () => closeAddHome(false));
+  $('#ah-close').addEventListener('click', () => closeAddHome(false));
+  $('#addhome').addEventListener('click', (e) => { if (e.target.id === 'addhome') closeAddHome(false); });
+  $('#a2hs-link').addEventListener('click', openAddHome);
+}
+
+/* =========================================================
    起動
    ========================================================= */
 function boot() {
@@ -1764,9 +1888,7 @@ function boot() {
   if (params.get('code')) $('#in-code').value = params.get('code');
 
   $('#build-stamp').textContent = 'ver ' + BUILD;
-  if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) {
-    $('#a2hs').style.display = 'none';
-  }
+  if (isStandalone()) $('#a2hs').style.display = 'none';
 
   const bs = $('#broker-select');
   BROKERS.forEach((b, i) => {
@@ -1810,10 +1932,13 @@ function boot() {
   });
 
   bindHowto();
+  bindAddHome();
   // 「次回からは表示しない」にチェックが入っていなければ、起動のたびに出す
   let seen = false;
   try { seen = localStorage.getItem(HOWTO_KEY) === '1'; } catch (e) {}
-  if (!seen && !params.get('nohowto')) openHowto(0);
+  const skipIntro = !!params.get('nohowto');           // 検証用：かぶせる画面を全部出さない
+  if (!seen && !skipIntro) openHowto(0);
+  else if (!skipIntro) maybeShowAddHome();             // 2回目以降はこちらだけ
 
   bgmInit();
   fxInit();
