@@ -5,7 +5,7 @@
 
 /* ---------- 定数 ---------- */
 const VERSION = 'v1.0';
-const BUILD   = '2026-07-31 05:00';   // 更新したらここも変える（タイトル画面下に出る）
+const BUILD   = '2026-07-31 06:15';   // 更新したらここも変える（タイトル画面下に出る）
 const BROKERS = [
   { label: 'A',  url: 'wss://broker.emqx.io:8084/mqtt' },
   { label: 'B',  url: 'wss://broker.hivemq.com:8884/mqtt' },
@@ -1939,6 +1939,7 @@ function closeAddHome(done) {
   lsSet(A2HS_KEY, done ? 'done' : String(Date.now()));
   $('#addhome').classList.remove('on');
   a2hsWelcome = false;
+  renderHomeNote();
   if (pendingHowto) { pendingHowto = false; setTimeout(() => openHowto(0), 260); }
 }
 /* 案内を出してよい状態か（アプリとして開いている・すでに済ませた人には出さない） */
@@ -1952,6 +1953,32 @@ function a2hsWanted() {
 function maybeShowAddHome(welcome) {
   if (a2hsWanted()) openAddHome(welcome);
 }
+/* ロゴのすぐ下に出す案内カード。
+   アプリ内ブラウザなら赤い警告、ふつうのブラウザなら「ホーム画面に追加」のおすすめ。 */
+function renderHomeNote() {
+  const app = inAppBrowser();
+  const note = $('#inapp-note');
+  if (isStandalone()) {                        // すでにアプリとして開いている
+    note.style.display = 'none';
+    $('#a2hs').style.display = 'none';
+    return;
+  }
+  if (app) {
+    $('#a2hs-link').textContent = app + 'の中で開いています → ブラウザで開く方法';
+    $('#a2hs').classList.add('warn');
+    $('#inapp-title').textContent = app + ' の中で開いています';
+    $('#inapp-sub').innerHTML = 'このままだとホーム画面に追加できません。<br>タップして、ブラウザで開く方法を見る';
+    note.classList.remove('ok');
+    note.style.display = '';
+    return;
+  }
+  if (lsGet(A2HS_KEY) === 'done') { note.style.display = 'none'; return; }
+  $('#inapp-title').textContent = 'ホーム画面に追加しませんか？';
+  $('#inapp-sub').innerHTML = '次から1タップで開けるようになります。<br>タップすると、やり方が出ます';
+  note.classList.add('ok');
+  note.style.display = '';
+}
+
 function bindAddHome() {
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
@@ -1995,13 +2022,11 @@ function boot() {
 
   $('#build-stamp').textContent = 'ver ' + BUILD;
   if (isStandalone()) $('#a2hs').style.display = 'none';
-  const app = inAppBrowser();
-  if (app && !isStandalone()) {
-    $('#a2hs-link').textContent = app + 'の中で開いています → ブラウザで開く方法';
-    $('#a2hs').classList.add('warn');
-    $('#inapp-title').textContent = app + ' の中で開いています';
-    $('#inapp-note').style.display = '';        // ロゴのすぐ下にも出す
+  if (params.has('reset')) {                    // 動作確認用：初めて来た人と同じ状態に戻す
+    lsSet(A2HS_KEY, ''); lsSet(HOWTO_KEY, '');
+    try { localStorage.removeItem(A2HS_KEY); localStorage.removeItem(HOWTO_KEY); } catch (e) {}
   }
+  renderHomeNote();
 
   const bs = $('#broker-select');
   BROKERS.forEach((b, i) => {
@@ -2050,7 +2075,7 @@ function boot() {
   const seen = lsGet(HOWTO_KEY) === '1';
   const skipIntro = !!params.get('nohowto');           // 検証用：かぶせる画面を全部出さない
   // LINEなどから外のブラウザに飛んできた直後は、その場で追加してもらうのがいちばん通じる
-  const fromShare = params.has('openExternalBrowser');
+  const fromShare = params.has('openExternalBrowser') || params.has('code') || params.has('a2hs');
   if (skipIntro) { /* 何も出さない */ }
   else if (fromShare && a2hsWanted()) { pendingHowto = !seen; openAddHome(true); }
   else if (!seen) openHowto(0);
