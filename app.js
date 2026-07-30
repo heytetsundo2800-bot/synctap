@@ -5,7 +5,7 @@
 
 /* ---------- 定数 ---------- */
 const VERSION = 'v1.0';
-const BUILD   = '2026-07-31 03:30';   // 更新したらここも変える（タイトル画面下に出る）
+const BUILD   = '2026-07-31 05:00';   // 更新したらここも変える（タイトル画面下に出る）
 const BROKERS = [
   { label: 'A',  url: 'wss://broker.emqx.io:8084/mqtt' },
   { label: 'B',  url: 'wss://broker.hivemq.com:8884/mqtt' },
@@ -1764,6 +1764,8 @@ function bindHowto() {
 const A2HS_KEY   = 'st_a2hs';                 // 'done'=もう出さない / 数値=「あとで」を押した時刻
 const A2HS_AGAIN = 7 * 24 * 60 * 60 * 1000;   // 「あとで」なら1週間後にもう一度
 let installPrompt = null;                     // Android/PC の「インストール」イベント
+let a2hsWelcome  = false;                     // 共有リンクからブラウザに来た直後かどうか
+let pendingHowto = false;                     // 案内を閉じたあとに「あそびかた」を出すか
 
 const SHARE_ICON =
   '<svg width="14" height="16" viewBox="0 0 15 17" fill="none" stroke="#f4ff2b" ' +
@@ -1900,10 +1902,13 @@ function a2hsSteps() {
 
 function renderAddHome() {
   const s = a2hsSteps();
-  $('#ah-title').innerHTML = s.title ||
-    'ホーム画面に追加すると、アプリになります';
-  $('#ah-sub').innerHTML = s.sub ||
-    '毎回リンクを探さなくてよくなり、全画面で遊べます。<br>インストール不要・数秒で終わります。';
+  $('#ah-title').innerHTML = s.title || (a2hsWelcome
+    ? 'ブラウザで開けました。ホーム画面に追加しますか？'
+    : 'ホーム画面に追加すると、アプリになります');
+  $('#ah-sub').innerHTML = s.sub || (a2hsWelcome
+    ? '追加しておくと、次からLINEを開かなくても1タップで始められます。<br>' +
+      'インストール不要・数秒で終わります。'
+    : '毎回リンクを探さなくてよくなり、全画面で遊べます。<br>インストール不要・数秒で終わります。');
   $('#ah-steps').innerHTML = s.steps.map((t, i) =>
     '<div class="ah-step"><div class="ah-num">' + (i + 1) + '</div><div>' + t + '</div></div>').join('') +
     '<p class="ah-note">' + s.note + '</p>';
@@ -1912,6 +1917,8 @@ function renderAddHome() {
   const s2 = $('#ah-sub2');
   s2.style.display = s.sub2 ? '' : 'none';
   if (s.sub2) s2.textContent = s.sub2;
+  // iPhoneのSafariは共有ボタンが画面の下にあるので、矢印で場所を示す
+  $('#ah-arrow').style.display = (!inAppBrowser() && platformOf() === 'ios-safari') ? '' : 'none';
 }
 
 async function copyShareUrl() {
@@ -1923,17 +1930,27 @@ async function copyShareUrl() {
     prompt('このURLをコピーして、ブラウザで開いてください', url);
   }
 }
-function openAddHome() { renderAddHome(); $('#addhome').classList.add('on'); }
+function openAddHome(welcome) {
+  a2hsWelcome = !!welcome;
+  renderAddHome();
+  $('#addhome').classList.add('on');
+}
 function closeAddHome(done) {
   lsSet(A2HS_KEY, done ? 'done' : String(Date.now()));
   $('#addhome').classList.remove('on');
+  a2hsWelcome = false;
+  if (pendingHowto) { pendingHowto = false; setTimeout(() => openHowto(0), 260); }
 }
-function maybeShowAddHome() {
-  if (isStandalone()) return;                       // すでにアプリとして開いている
+/* 案内を出してよい状態か（アプリとして開いている・すでに済ませた人には出さない） */
+function a2hsWanted() {
+  if (isStandalone()) return false;
   const v = lsGet(A2HS_KEY);
-  if (v === 'done') return;
-  if (v && Date.now() - (+v) < A2HS_AGAIN) return;  // 「あとで」から1週間は出さない
-  openAddHome();
+  if (v === 'done') return false;
+  if (v && Date.now() - (+v) < A2HS_AGAIN) return false;
+  return true;
+}
+function maybeShowAddHome(welcome) {
+  if (a2hsWanted()) openAddHome(welcome);
 }
 function bindAddHome() {
   window.addEventListener('beforeinstallprompt', (e) => {
@@ -1947,7 +1964,7 @@ function bindAddHome() {
     toast('ホーム画面に追加しました');
   });
   $('#ah-sub2').addEventListener('click', copyShareUrl);
-  $('#inapp-note').addEventListener('click', openAddHome);
+  $('#inapp-note').addEventListener('click', () => openAddHome(false));
   $('#ah-main').addEventListener('click', async () => {
     const act = $('#ah-main').dataset.act;
     if (act === 'escape') { escapeToBrowser(); return; }
@@ -1961,7 +1978,7 @@ function bindAddHome() {
   $('#ah-later').addEventListener('click', () => closeAddHome(false));
   $('#ah-close').addEventListener('click', () => closeAddHome(false));
   $('#addhome').addEventListener('click', (e) => { if (e.target.id === 'addhome') closeAddHome(false); });
-  $('#a2hs-link').addEventListener('click', openAddHome);
+  $('#a2hs-link').addEventListener('click', () => openAddHome(false));
 }
 
 /* =========================================================
@@ -2032,8 +2049,12 @@ function boot() {
   // 「次回からは表示しない」にチェックが入っていなければ、起動のたびに出す
   const seen = lsGet(HOWTO_KEY) === '1';
   const skipIntro = !!params.get('nohowto');           // 検証用：かぶせる画面を全部出さない
-  if (!seen && !skipIntro) openHowto(0);
-  else if (!skipIntro) maybeShowAddHome();             // 2回目以降はこちらだけ
+  // LINEなどから外のブラウザに飛んできた直後は、その場で追加してもらうのがいちばん通じる
+  const fromShare = params.has('openExternalBrowser');
+  if (skipIntro) { /* 何も出さない */ }
+  else if (fromShare && a2hsWanted()) { pendingHowto = !seen; openAddHome(true); }
+  else if (!seen) openHowto(0);
+  else maybeShowAddHome();                             // 2回目以降はこちらだけ
 
   bgmInit();
   fxInit();

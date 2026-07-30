@@ -282,6 +282,11 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
 .ah-note{font-size:11px;color:var(--dim);line-height:1.7;margin:14px 0 0;text-align:center}
 .ah-later{display:block;width:100%;margin-top:10px;background:none;border:0;color:var(--dim);
   font-size:12.5px;padding:10px;cursor:pointer;font-family:inherit;letter-spacing:.05em}
+#ah-arrow{text-align:center;margin-top:2px}
+#ah-arrow span{display:block;font-size:11px;color:var(--accent);letter-spacing:.06em;font-weight:800}
+#ah-arrow i{display:block;font-style:normal;font-size:22px;color:var(--accent);
+  animation:ahbob 1.1s ease-in-out infinite}
+@keyframes ahbob{0%,100%{transform:translateY(0);opacity:.55}50%{transform:translateY(7px);opacity:1}}
 
 /* ---------- BGM の切り替えボタン ---------- */
 .bgmbtn{position:fixed;z-index:110;top:calc(var(--safe-t) + 12px);right:12px;
@@ -601,6 +606,7 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
     <button id="ah-main">わかった</button>
     <button id="ah-sub2" class="ghost" style="display:none">URLをコピーする</button>
     <button id="ah-later" class="ah-later">あとでいい</button>
+    <div id="ah-arrow" style="display:none"><span>共有ボタンはこの下にあります</span><i>▼</i></div>
   </div>
 </div>
 
