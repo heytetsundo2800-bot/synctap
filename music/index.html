@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ff1f7a">
+<title>せーの!! オリジナルサウンドトラック</title>
+<meta name="description" content="パーティゲーム「せーの!!」で流れている5曲。全15分47秒。">
+<link rel="icon" href="../icons/favicon-v2.png">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon-v2.png">
+
+<!-- LINEなどに貼ったときのカード表示 -->
+<meta property="og:type" content="music.album">
+<meta property="og:title" content="せーの!! オリジナルサウンドトラック">
+<meta property="og:description" content="パーティゲーム「せーの!!」の全5曲。タップするだけで聴けます。">
+<meta property="og:image" content="https://seno-game.vercel.app/music/cover.png">
+<meta property="og:url" content="https://seno-game.vercel.app/music/">
+<meta name="twitter:card" content="summary_large_image">
+
+<style>
+:root{
+  --bg:#0b0610; --panel:#180d1c; --line:#3a1e42; --fg:#fff3fa; --dim:#a487ad;
+  --brand:#ff1f7a; --accent:#f4ff2b;
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);min-height:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+  padding-bottom:calc(var(--safe-b) + 118px)}
+.bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(circle at 12% -6%, #ff1f7a3d, transparent 42%),
+    radial-gradient(circle at 96% 12%, #f4ff2b1f, transparent 38%),
+    radial-gradient(circle at 50% 108%, #ff1f7a26, transparent 46%)}
+.bg::after{content:'!!';position:absolute;right:-6vw;bottom:-4vh;font-size:56vw;font-weight:900;
+  font-style:italic;line-height:1;color:#ff1f7a;opacity:.05;letter-spacing:-.04em}
+.wrap{position:relative;z-index:1;max-width:520px;margin:0 auto;padding:calc(var(--safe-t) + 30px) 22px 0}
+
+header{text-align:center;margin-bottom:26px}
+.cover{width:186px;height:186px;border-radius:26px;display:block;margin:0 auto 20px;
+  box-shadow:0 18px 50px #0009}
+.kicker{font-size:10px;letter-spacing:.34em;white-space:nowrap;color:var(--brand);font-weight:900;margin-bottom:9px}
+h1{margin:0;font-size:24px;font-weight:900;letter-spacing:.02em;line-height:1.45}
+h1 em{font-style:normal;color:var(--accent)}
+.meta{margin:11px 0 0;font-size:11.5px;color:var(--dim);letter-spacing:.08em}
+
+.list{display:flex;flex-direction:column;gap:8px;margin-bottom:22px}
+.tr{display:grid;grid-template-columns:32px 1fr auto;align-items:center;gap:13px;
+  background:var(--panel);border:1.5px solid var(--line);border-radius:14px;
+  padding:14px 15px;cursor:pointer;transition:border-color .15s,background .15s}
+.tr:active{transform:translateY(1px)}
+.tr .no{font-size:12px;font-weight:900;color:var(--dim);text-align:center;font-variant-numeric:tabular-nums}
+.tr .nm{font-size:15px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tr .sub{font-size:10.5px;color:var(--dim);margin-top:3px;letter-spacing:.05em}
+.tr .tm{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
+.tr.on{border-color:var(--accent);background:#241f06}
+.tr.on .nm{color:var(--accent)}
+.tr.on .no{color:var(--accent)}
+/* 再生中は番号のかわりに動くバー */
+.tr.on .no{position:relative;font-size:0}
+.tr.on .no::before{content:'';position:absolute;inset:0;margin:auto;width:14px;height:13px;
+  background:
+    linear-gradient(var(--accent),var(--accent)) 0 100%/3px 100% no-repeat,
+    linear-gradient(var(--accent),var(--accent)) 5.5px 100%/3px 60% no-repeat,
+    linear-gradient(var(--accent),var(--accent)) 11px 100%/3px 85% no-repeat;
+  animation:eq .9s ease-in-out infinite alternate}
+@keyframes eq{from{background-size:3px 35%,3px 90%,3px 55%}to{background-size:3px 100%,3px 45%,3px 100%}}
+
+.note{font-size:11.5px;color:var(--dim);line-height:1.9;text-align:center;padding:4px 0 30px}
+.note a{color:var(--accent)}
+.btn{display:block;width:100%;padding:16px;font-size:15px;font-weight:900;border-radius:15px;
+  border:1.5px solid var(--line);background:#1e1024;color:var(--fg);font-family:inherit;
+  cursor:pointer;letter-spacing:.05em;margin-bottom:10px;text-align:center;text-decoration:none}
+.btn.hot{background:var(--accent);color:#1a1004;border:0}
+
+/* ---------- 下の再生バー ---------- */
+#bar{position:fixed;left:0;right:0;bottom:0;z-index:5;background:#140a18f2;
+  border-top:1.5px solid var(--line);backdrop-filter:blur(12px);
+  padding:12px 18px calc(var(--safe-b) + 12px);transform:translateY(110%);transition:transform .28s}
+#bar.on{transform:none}
+.barin{max-width:520px;margin:0 auto}
+.seek{display:flex;align-items:center;gap:10px;font-size:10.5px;color:var(--dim);
+  font-variant-numeric:tabular-nums;margin-bottom:9px}
+#prog{flex:1;height:5px;border-radius:99px;background:#33193b;position:relative;cursor:pointer}
+#prog i{position:absolute;left:0;top:0;bottom:0;border-radius:99px;background:var(--accent);width:0}
+.ctl{display:flex;align-items:center;gap:14px}
+.ctl .nowname{flex:1;min-width:0}
+.ctl .nowname b{display:block;font-size:14px;font-weight:900;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.ctl .nowname span{display:block;font-size:10px;color:var(--dim);letter-spacing:.1em;margin-top:2px}
+.ib{width:40px;height:40px;flex:0 0 40px;border-radius:50%;border:1.5px solid var(--line);
+  background:#1e1024;color:var(--fg);display:flex;align-items:center;justify-content:center;
+  cursor:pointer;padding:0}
+.ib.play{width:50px;height:50px;flex:0 0 50px;background:var(--accent);border:0;color:#1a1004}
+.ib svg{width:17px;height:17px;fill:currentColor}
+.ib.play svg{width:20px;height:20px}
+</style>
+</head>
+<body>
+<div class="bg"></div>
+
+<div class="wrap">
+  <header>
+    <img class="cover" src="./cover.png" alt="せーの!!">
+    <div class="kicker">ORIGINAL SOUNDTRACK</div>
+    <h1>せーの<em>!!</em> オリジナルサウンドトラック</h1>
+    <p class="meta">全5曲 · 15分47秒</p>
+  </header>
+
+  <div class="list" id="list"></div>
+
+  <a class="btn hot" href="https://seno-game.vercel.app/?openExternalBrowser=1">ゲームで遊ぶ</a>
+  <button class="btn" id="btn-share">このページのリンクをコピー</button>
+
+  <p class="note">
+    ゲーム中に流れている曲のフルバージョンです。<br>
+    ダウンロードしたい曲は長押し（PCは右クリック）から保存できます。
+  </p>
+</div>
+
+<div id="bar">
+  <div class="barin">
+    <div class="seek">
+      <span id="t-cur">0:00</span>
+      <div id="prog"><i></i></div>
+      <span id="t-dur">0:00</span>
+    </div>
+    <div class="ctl">
+      <div class="nowname"><b id="now-name">—</b><span>せーの!! サウンドトラック</span></div>
+      <button class="ib" id="b-prev" aria-label="前の曲">
+        <svg viewBox="0 0 24 24"><path d="M6 5h3v14H6zM20 5v14l-11-7z"/></svg></button>
+      <button class="ib play" id="b-play" aria-label="再生">
+        <svg id="ic-play" viewBox="0 0 24 24"><path d="M7 4l14 8-14 8z"/></svg>
+        <svg id="ic-pause" viewBox="0 0 24 24" style="display:none"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>
+      </button>
+      <button class="ib" id="b-next" aria-label="次の曲">
+        <svg viewBox="0 0 24 24"><path d="M18 5h-3v14h3zM4 5v14l11-7z"/></svg></button>
+    </div>
+  </div>
+</div>
+
+<script>
+const TRACKS = [
+  { file: '01-title.mp3', name: 'タイトル画面', sub: 'ホーム画面・ロビーで流れる曲',   dur: 174 },
+  { file: '02-play.mp3',  name: 'プレイ中',     sub: 'ふつうスピードのプレイ中',       dur: 219 },
+  { file: '03-oni.mp3',   name: '鬼モード',     sub: '鬼スピードのプレイ中',           dur: 304 },
+  { file: '04-win.mp3',   name: '勝ち',         sub: '勝ったときの結果画面',           dur: 150 },
+  { file: '05-lose.mp3',  name: '負け',         sub: '負けたときの結果画面',           dur:  99 },
+];
+
+const $ = s => document.querySelector(s);
+const mmss = s => (isFinite(s) ? Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0') : '0:00');
+
+const audio = new Audio();
+audio.preload = 'none';
+let cur = -1;
+
+// 一覧を作る
+const list = $('#list');
+TRACKS.forEach((t, i) => {
+  const el = document.createElement('div');
+  el.className = 'tr';
+  el.dataset.i = i;
+  el.innerHTML = '<div class="no">' + (i + 1) + '</div>' +
+    '<div><div class="nm">' + t.name + '</div><div class="sub">' + t.sub + '</div></div>' +
+    '<div class="tm">' + mmss(t.dur) + '</div>';
+  el.addEventListener('click', () => (cur === i ? toggle() : play(i)));
+  list.appendChild(el);
+});
+
+function render() {
+  document.querySelectorAll('.tr').forEach((el, i) => el.classList.toggle('on', i === cur));
+  $('#now-name').textContent = cur < 0 ? '—' : TRACKS[cur].name;
+  const playing = !audio.paused && cur >= 0;
+  $('#ic-play').style.display  = playing ? 'none' : '';
+  $('#ic-pause').style.display = playing ? '' : 'none';
+  $('#bar').classList.toggle('on', cur >= 0);
+}
+
+function play(i) {
+  cur = (i + TRACKS.length) % TRACKS.length;
+  audio.src = './tracks/' + TRACKS[cur].file;
+  audio.play().catch(() => {});
+  render();
+  media();
+}
+function toggle() {
+  if (cur < 0) return play(0);
+  if (audio.paused) audio.play().catch(() => {}); else audio.pause();
+  render();
+}
+
+$('#b-play').addEventListener('click', toggle);
+$('#b-next').addEventListener('click', () => play(cur + 1));
+$('#b-prev').addEventListener('click', () => {
+  if (audio.currentTime > 3) { audio.currentTime = 0; return; }   // 3秒すぎていたら頭出し
+  play(cur - 1);
+});
+
+audio.addEventListener('play',  render);
+audio.addEventListener('pause', render);
+audio.addEventListener('ended', () => play(cur + 1));             // 自動で次の曲へ
+audio.addEventListener('timeupdate', () => {
+  $('#t-cur').textContent = mmss(audio.currentTime);
+  $('#t-dur').textContent = mmss(audio.duration);
+  $('#prog i').style.width = (audio.duration ? audio.currentTime / audio.duration * 100 : 0) + '%';
+});
+
+// バーをつまんで移動
+const prog = $('#prog');
+const seekTo = (e) => {
+  const r = prog.getBoundingClientRect();
+  const x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+  if (audio.duration) audio.currentTime = Math.max(0, Math.min(1, x / r.width)) * audio.duration;
+};
+prog.addEventListener('click', seekTo);
+prog.addEventListener('touchstart', seekTo, { passive: true });
+
+/* ロック画面・イヤホンのボタンから操作できるようにする */
+function media() {
+  if (!('mediaSession' in navigator) || cur < 0) return;
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: TRACKS[cur].name,
+    artist: 'せーの!!',
+    album: 'せーの!! オリジナルサウンドトラック',
+    artwork: [{ src: location.origin + location.pathname + 'cover.png', sizes: '512x512', type: 'image/png' }],
+  });
+  navigator.mediaSession.setActionHandler('play',  () => { audio.play(); render(); });
+  navigator.mediaSession.setActionHandler('pause', () => { audio.pause(); render(); });
+  navigator.mediaSession.setActionHandler('nexttrack',     () => play(cur + 1));
+  navigator.mediaSession.setActionHandler('previoustrack', () => play(cur - 1));
+}
+
+$('#btn-share').addEventListener('click', async () => {
+  const url = 'https://seno-game.vercel.app/music/';
+  const btn = $('#btn-share');
+  try {
+    if (navigator.share) { await navigator.share({ title: 'せーの!! サウンドトラック', url }); return; }
+    await navigator.clipboard.writeText(url);
+    btn.textContent = 'コピーしました';
+    setTimeout(() => (btn.textContent = 'このページのリンクをコピー'), 1600);
+  } catch (e) { prompt('このURLを送ってください', url); }
+});
+
+render();
+</script>
+</body>
+</html>
