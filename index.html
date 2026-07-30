@@ -253,6 +253,10 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
 #a2hs.warn{display:inline-block;margin:6px 0;padding:9px 16px;border-radius:999px;
   background:#2a0a1a;border:1.5px solid #5a1030}
 #a2hs.warn #a2hs-link{color:#ff8fb4;text-decoration:none;font-weight:800}
+#inapp-note{margin:18px 0 2px;padding:15px 17px;border-radius:15px;background:#2a0a1a;
+  border:1.5px solid #5a1030;cursor:pointer}
+#inapp-note b{display:block;font-size:14.5px;font-weight:900;color:#ff8fb4;margin-bottom:5px}
+#inapp-note span{display:block;font-size:11.5px;color:var(--dim);line-height:1.7}
 #addhome{position:fixed;inset:0;z-index:130;background:#0b0610cc;display:none;
   align-items:flex-end;justify-content:center}
 #addhome.on{display:flex}
@@ -371,6 +375,11 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
       <h1>せーの<em><i>!</i><i>!</i></em></h1>
       <p class="tag">みんなで、いっせーの。</p>
       <p class="tag" style="margin-top:6px;font-size:11.5px;color:var(--brand);font-weight:800">1人から10人までプレイ可能</p>
+    </div>
+
+    <div id="inapp-note" style="display:none">
+      <b id="inapp-title">LINE の中で開いています</b>
+      <span>このままだとホーム画面に追加できません。<br>タップして、ブラウザで開く方法を見る</span>
     </div>
 
     <div class="rules">
@@ -590,6 +599,7 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
     </div>
     <div class="ah-steps" id="ah-steps"></div>
     <button id="ah-main">わかった</button>
+    <button id="ah-sub2" class="ghost" style="display:none">URLをコピーする</button>
     <button id="ah-later" class="ah-later">あとでいい</button>
   </div>
 </div>

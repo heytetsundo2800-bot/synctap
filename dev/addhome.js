@@ -38,6 +38,17 @@ const UAS = {
     steps.forEach((s, i) => console.log('   ' + (i + 1) + '. ' + s));
     await pg.screenshot({ path: 'shot-addhome-' + name.split(' ')[0].toLowerCase() + '-' + name.split(' ')[1].toLowerCase() + '.png' });
 
+    const sub2 = await pg.evaluate(() => {
+      const e = document.querySelector('#ah-sub2');
+      return getComputedStyle(e).display === 'none' ? null : e.textContent.trim();
+    });
+    const note = await pg.evaluate(() => {
+      const e = document.querySelector('#inapp-note');
+      return getComputedStyle(e).display === 'none' ? null : e.textContent.replace(/\s+/g,' ').trim();
+    });
+    console.log('  副ボタン:', sub2 || 'なし');
+    console.log('  ロゴ下の警告:', note || 'なし');
+
     // 「あとで」を押したら閉じて、再読み込みでは出ないこと
     await pg.click('#ah-later'); await wait(300);
     console.log('  あとで→閉じた:', !(await pg.evaluate(() => document.querySelector('#addhome').classList.contains('on'))),

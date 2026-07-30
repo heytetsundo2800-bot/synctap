@@ -5,7 +5,7 @@
 
 /* ---------- 定数 ---------- */
 const VERSION = 'v1.0';
-const BUILD   = '2026-07-31 02:10';   // 更新したらここも変える（タイトル画面下に出る）
+const BUILD   = '2026-07-31 03:30';   // 更新したらここも変える（タイトル画面下に出る）
 const BROKERS = [
   { label: 'A',  url: 'wss://broker.emqx.io:8084/mqtt' },
   { label: 'B',  url: 'wss://broker.hivemq.com:8884/mqtt' },
@@ -1790,10 +1790,31 @@ function inAppBrowser() {
   if (/KAKAOTALK/i.test(ua))         return 'カカオトーク';
   return null;
 }
-/* 共有用のURL。LINEはこの印を付けておくと、アプリ内ではなく外のブラウザで開いてくれる */
+/* 共有用のURL。LINEはこの印を付けておくと、アプリ内ではなく外のブラウザで開いてくれる。
+   ただし効くのは「トークに貼られたリンクを直接タップした時」だけで、
+   転送されたリンクや長押しから開いた場合は無視される。だから下の脱出手段も用意する。 */
 function shareUrl(code) {
   const base = location.origin + location.pathname;
   return base + '?' + (code ? 'code=' + code + '&' : '') + 'openExternalBrowser=1';
+}
+
+/* アプリ内ブラウザから外のブラウザへ抜け出す。
+   Android は intent:// で標準ブラウザを直接起動できる（ほぼ確実）。
+   iOS は x-safari-https:// が通ることがある（通らない端末もあるので手順も併記する）。 */
+function escapeToBrowser() {
+  const p = platformOf();
+  const plain = location.origin + location.pathname;
+  try {
+    if (p === 'android') {
+      location.href = 'intent://' + location.host + location.pathname +
+        '#Intent;scheme=https;S.browser_fallback_url=' + encodeURIComponent(plain) + ';end';
+    } else {
+      location.href = 'x-safari-' + plain;      // x-safari-https://...
+    }
+  } catch (e) {}
+  setTimeout(() => {
+    if (!document.hidden) toast('開かないときは、下の手順で開いてください');
+  }, 1800);
 }
 
 function platformOf() {
@@ -1824,14 +1845,15 @@ function a2hsSteps() {
       title: 'まず、' + app + 'の外で開いてください',
       sub: app + 'の中で開いたままだと、ホーム画面に追加できません。<br>' +
            'ブラウザで開き直せば、あとは数秒で終わります。',
-      main: 'URLをコピーする', copy: true,
+      main: 'ブラウザで開く', escape: true, sub2: 'URLをコピーする',
       steps: [
+        '下の<b>「ブラウザで開く」</b>を押す（これで開けば完了）',
         menu,
         'メニューの中の' + label + 'を選ぶ',
         'ブラウザで開いたら、画面いちばん下の<b>「ホーム画面に追加する方法」</b>をタップ。続きの手順が出ます',
       ],
-      note: '見つからないときは、下のボタンでURLをコピーして、' +
-            'ブラウザのアドレス欄に貼り付けても同じです。',
+      note: '1でうまくいかないときは 2〜3 の手動の手順で。' +
+            'それも無理なら「URLをコピーする」でコピーして、ブラウザのアドレス欄に貼り付けてください。',
     };
   }
 
@@ -1886,7 +1908,10 @@ function renderAddHome() {
     '<div class="ah-step"><div class="ah-num">' + (i + 1) + '</div><div>' + t + '</div></div>').join('') +
     '<p class="ah-note">' + s.note + '</p>';
   $('#ah-main').textContent = s.main;
-  $('#ah-main').dataset.copy = s.copy ? '1' : '';
+  $('#ah-main').dataset.act = s.escape ? 'escape' : (s.copy ? 'copy' : '');
+  const s2 = $('#ah-sub2');
+  s2.style.display = s.sub2 ? '' : 'none';
+  if (s.sub2) s2.textContent = s.sub2;
 }
 
 async function copyShareUrl() {
@@ -1921,8 +1946,12 @@ function bindAddHome() {
     closeAddHome(true);
     toast('ホーム画面に追加しました');
   });
+  $('#ah-sub2').addEventListener('click', copyShareUrl);
+  $('#inapp-note').addEventListener('click', openAddHome);
   $('#ah-main').addEventListener('click', async () => {
-    if ($('#ah-main').dataset.copy) { await copyShareUrl(); return; }   // 閉じずにコピーだけ
+    const act = $('#ah-main').dataset.act;
+    if (act === 'escape') { escapeToBrowser(); return; }
+    if (act === 'copy')   { await copyShareUrl(); return; }   // 閉じずにコピーだけ
     if (installPrompt) {
       const p = installPrompt; installPrompt = null;
       try { p.prompt(); await p.userChoice; } catch (e) {}
@@ -1953,6 +1982,8 @@ function boot() {
   if (app && !isStandalone()) {
     $('#a2hs-link').textContent = app + 'の中で開いています → ブラウザで開く方法';
     $('#a2hs').classList.add('warn');
+    $('#inapp-title').textContent = app + ' の中で開いています';
+    $('#inapp-note').style.display = '';        // ロゴのすぐ下にも出す
   }
 
   const bs = $('#broker-select');
