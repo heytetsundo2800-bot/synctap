@@ -5,7 +5,7 @@
 
 /* ---------- 定数 ---------- */
 const VERSION = 'v1.0';
-const BUILD   = '2026-07-31 00:20';   // 更新したらここも変える（タイトル画面下に出る）
+const BUILD   = '2026-07-31 02:10';   // 更新したらここも変える（タイトル画面下に出る）
 const BROKERS = [
   { label: 'A',  url: 'wss://broker.emqx.io:8084/mqtt' },
   { label: 'B',  url: 'wss://broker.hivemq.com:8884/mqtt' },
@@ -1778,6 +1778,24 @@ const DOTS_ICON =
 function isStandalone() {
   return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 }
+/* LINEなどアプリ内ブラウザで開かれているか。
+   この状態ではホーム画面に追加できないので、先に外のブラウザへ出てもらう必要がある。 */
+function inAppBrowser() {
+  const ua = navigator.userAgent;
+  if (/\bLine\//i.test(ua))          return 'LINE';
+  if (/Instagram/i.test(ua))         return 'Instagram';
+  if (/FBAN|FBAV|FB_IAB/i.test(ua))  return 'Facebook';
+  if (/Twitter/i.test(ua))           return 'X';
+  if (/MicroMessenger/i.test(ua))    return 'WeChat';
+  if (/KAKAOTALK/i.test(ua))         return 'カカオトーク';
+  return null;
+}
+/* 共有用のURL。LINEはこの印を付けておくと、アプリ内ではなく外のブラウザで開いてくれる */
+function shareUrl(code) {
+  const base = location.origin + location.pathname;
+  return base + '?' + (code ? 'code=' + code + '&' : '') + 'openExternalBrowser=1';
+}
+
 function platformOf() {
   const ua = navigator.userAgent;
   const iOS = /iphone|ipad|ipod/i.test(ua) ||
@@ -1792,6 +1810,31 @@ function platformOf() {
 
 function a2hsSteps() {
   const p = platformOf();
+  const app = inAppBrowser();
+
+  // LINEなどの中で開いている場合は、まず外のブラウザへ出てもらう
+  if (app) {
+    const menu = p === 'android'
+      ? '画面<b>右下のメニュー</b> ' + DOTS_ICON + ' をタップ'
+      : '画面<b>右下の三本線</b>（機種により「…」）をタップ';
+    const label = p === 'android'
+      ? '<b>「ブラウザで開く」</b>または<b>「他のアプリで開く」</b>'
+      : '<b>「Safariで開く」</b>または<b>「ブラウザで開く」</b>';
+    return {
+      title: 'まず、' + app + 'の外で開いてください',
+      sub: app + 'の中で開いたままだと、ホーム画面に追加できません。<br>' +
+           'ブラウザで開き直せば、あとは数秒で終わります。',
+      main: 'URLをコピーする', copy: true,
+      steps: [
+        menu,
+        'メニューの中の' + label + 'を選ぶ',
+        'ブラウザで開いたら、画面いちばん下の<b>「ホーム画面に追加する方法」</b>をタップ。続きの手順が出ます',
+      ],
+      note: '見つからないときは、下のボタンでURLをコピーして、' +
+            'ブラウザのアドレス欄に貼り付けても同じです。',
+    };
+  }
+
   if (installPrompt) {
     return { main: 'ホーム画面に追加', steps: [
       'このまま下の<b>「ホーム画面に追加」</b>を押すだけで終わります。',
@@ -1813,9 +1856,9 @@ function a2hsSteps() {
     ], note: 'うまくいかないときは Safari で開き直すと確実です。' };
   }
   if (p === 'ios-other') {
-    return { main: 'やり方はわかった', steps: [
+    return { main: 'URLをコピーする', copy: true, steps: [
       'このブラウザではホーム画面に追加できません',
-      'いま開いているURLをコピーして、<b>Safari</b>で開き直してください',
+      '下のボタンでURLをコピーして、<b>Safari</b>で開き直してください',
       'Safariの共有ボタン ' + SHARE_ICON + ' →<b>「ホーム画面に追加」</b>',
     ], note: 'iPhoneはSafariからだけアプリ化できる仕組みになっています。' };
   }
@@ -1835,10 +1878,25 @@ function a2hsSteps() {
 
 function renderAddHome() {
   const s = a2hsSteps();
+  $('#ah-title').innerHTML = s.title ||
+    'ホーム画面に追加すると、アプリになります';
+  $('#ah-sub').innerHTML = s.sub ||
+    '毎回リンクを探さなくてよくなり、全画面で遊べます。<br>インストール不要・数秒で終わります。';
   $('#ah-steps').innerHTML = s.steps.map((t, i) =>
     '<div class="ah-step"><div class="ah-num">' + (i + 1) + '</div><div>' + t + '</div></div>').join('') +
     '<p class="ah-note">' + s.note + '</p>';
   $('#ah-main').textContent = s.main;
+  $('#ah-main').dataset.copy = s.copy ? '1' : '';
+}
+
+async function copyShareUrl() {
+  const url = shareUrl(null);
+  try {
+    await navigator.clipboard.writeText(url);
+    toast('URLをコピーしました');
+  } catch (e) {
+    prompt('このURLをコピーして、ブラウザで開いてください', url);
+  }
 }
 function openAddHome() { renderAddHome(); $('#addhome').classList.add('on'); }
 function closeAddHome(done) {
@@ -1864,6 +1922,7 @@ function bindAddHome() {
     toast('ホーム画面に追加しました');
   });
   $('#ah-main').addEventListener('click', async () => {
+    if ($('#ah-main').dataset.copy) { await copyShareUrl(); return; }   // 閉じずにコピーだけ
     if (installPrompt) {
       const p = installPrompt; installPrompt = null;
       try { p.prompt(); await p.userChoice; } catch (e) {}
@@ -1890,6 +1949,11 @@ function boot() {
 
   $('#build-stamp').textContent = 'ver ' + BUILD;
   if (isStandalone()) $('#a2hs').style.display = 'none';
+  const app = inAppBrowser();
+  if (app && !isStandalone()) {
+    $('#a2hs-link').textContent = app + 'の中で開いています → ブラウザで開く方法';
+    $('#a2hs').classList.add('warn');
+  }
 
   const bs = $('#broker-select');
   BROKERS.forEach((b, i) => {
@@ -1927,9 +1991,9 @@ function boot() {
   $('#speed-normal').addEventListener('click', () => setSpeed('normal'));
   $('#speed-oni').addEventListener('click', () => setSpeed('oni'));
   $('#btn-copy').addEventListener('click', async () => {
-    const url = location.origin + location.pathname + '?code=' + S.code;
+    const url = shareUrl(S.code);   // LINEで送っても外のブラウザで開くようにしておく
     try { await navigator.clipboard.writeText(url); toast('参加URLをコピーしました'); }
-    catch (e) { prompt('このURLを2人に送ってください', url); }
+    catch (e) { prompt('このURLを友だちに送ってください', url); }
   });
 
   bindHowto();

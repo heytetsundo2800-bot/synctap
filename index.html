@@ -250,6 +250,9 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
 
 /* ---------- ホーム画面に追加のおすすめ ---------- */
 #a2hs-link{cursor:pointer;color:var(--accent);text-decoration-color:#f4ff2b66}
+#a2hs.warn{display:inline-block;margin:6px 0;padding:9px 16px;border-radius:999px;
+  background:#2a0a1a;border:1.5px solid #5a1030}
+#a2hs.warn #a2hs-link{color:#ff8fb4;text-decoration:none;font-weight:800}
 #addhome{position:fixed;inset:0;z-index:130;background:#0b0610cc;display:none;
   align-items:flex-end;justify-content:center}
 #addhome.on{display:flex}
@@ -581,8 +584,8 @@ h2{font-size:23px;margin:0 0 6px;font-weight:900}
     <div class="ah-head">
       <img class="ah-icon" src="./icons/icon-192-v2.png" alt="">
       <div>
-        <h3>ホーム画面に追加すると、アプリになります</h3>
-        <p>毎回リンクを探さなくてよくなり、全画面で遊べます。<br>インストール不要・数秒で終わります。</p>
+        <h3 id="ah-title">ホーム画面に追加すると、アプリになります</h3>
+        <p id="ah-sub">毎回リンクを探さなくてよくなり、全画面で遊べます。<br>インストール不要・数秒で終わります。</p>
       </div>
     </div>
     <div class="ah-steps" id="ah-steps"></div>

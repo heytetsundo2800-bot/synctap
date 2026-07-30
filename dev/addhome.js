@@ -9,6 +9,9 @@ const UAS = {
   'iPhone Firefox': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/127.0 Mobile/15E148 Safari/605.1.15',
   'Android Chrome': 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36',
   'PC Chrome': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+  'LINE iPhone': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Line/14.9.1 NetType/WIFI Language/ja',
+  'LINE Android': 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36 Line/14.9.0/IAB',
+  'Instagram iPhone': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 330.0.0.0.0',
 };
 
 (async () => {
@@ -27,8 +30,11 @@ const UAS = {
     const steps = await pg.evaluate(() =>
       Array.from(document.querySelectorAll('#ah-steps .ah-step')).map(e => e.textContent.trim()));
     const main = await pg.textContent('#ah-main');
+    const title = await pg.textContent('#ah-title');
     console.log('=== ' + name + ' ===');
     console.log('  あそびかた:', htOn, '/ 続けて案内:', ahOn, '/ ボタン:', main.trim());
+    console.log('  見出し:', title.trim());
+    console.log('  下の表示:', (await pg.textContent('#a2hs-link')).trim());
     steps.forEach((s, i) => console.log('   ' + (i + 1) + '. ' + s));
     await pg.screenshot({ path: 'shot-addhome-' + name.split(' ')[0].toLowerCase() + '-' + name.split(' ')[1].toLowerCase() + '.png' });
 
