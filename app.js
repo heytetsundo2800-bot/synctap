@@ -5,7 +5,7 @@
 
 /* ---------- 定数 ---------- */
 const VERSION = 'v1.0';
-const BUILD   = '2026-07-31 07:05';   // 更新したらここも変える（タイトル画面下に出る）
+const BUILD   = '2026-07-31 07:40';   // 更新したらここも変える（タイトル画面下に出る）
 const BROKERS = [
   { label: 'A',  url: 'wss://broker.emqx.io:8084/mqtt' },
   { label: 'B',  url: 'wss://broker.hivemq.com:8884/mqtt' },
